@@ -53,16 +53,16 @@ jobs:
         run: mvn -B clean verify -Pdist -Dquick
 
       - name: 'Download kafka'
-        run: wget https://downloads.apache.org/kafka/3.4.0/kafka_2.13-3.4.0.tgz; tar xvf kafka_2.13-3.4.0.tgz
+        run: wget https://downloads.apache.org/kafka/3.4.0/kafka_2.13-3.4.0.tgz; tar xf kafka_2.13-3.4.0.tgz
 
       - name: 'Run zookeeper'
-        run: cd kafka_2.13-3.4.0; bin/zookeeper-server-start.sh config/zookeeper.properties
+        run: cd kafka_2.13-3.4.0; bin/zookeeper-server-start.sh config/zookeeper.properties &
 
       - name: 'Run kafka'
-        run: cd kafka_2.13-3.4.0; bin/kafka-server-start.sh config/server.properties
+        run: cd kafka_2.13-3.4.0; bin/kafka-server-start.sh config/server.properties &
 
       - name: 'Run kroxy'
-        run: java -jar kroxylicious/target/kroxylicious-1.0-SNAPSHOT.jar --config kroxylicious/example-proxy-config.yml
+        run: java -jar kroxylicious/target/kroxylicious-1.0-SNAPSHOT.jar --config kroxylicious/example-proxy-config.yml &
 
       - name: 'Run performance tests'
         run: bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt
