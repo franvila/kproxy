@@ -74,7 +74,7 @@ jobs:
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: kafka producer perf test Benchmark
-          tool: 'kafka-producer-perf-test.sh'
+          tool: 'jmh'
           output-file-path: output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
