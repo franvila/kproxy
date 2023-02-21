@@ -65,7 +65,7 @@ jobs:
         run: java -jar kroxylicious/target/kroxylicious-1.0-SNAPSHOT.jar --config kroxylicious/example-proxy-config.yml &
 
       - name: 'Run performance tests'
-        run: bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt
+        run: cd kafka_2.13-3.4.0; bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt
 
 #      - name: 'Store benchmark result'
 #        uses: benchmark-action/github-action-benchmark@v1.15.0
