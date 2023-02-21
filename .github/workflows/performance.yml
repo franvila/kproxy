@@ -68,7 +68,7 @@ jobs:
         run: cd kafka_2.13-3.4.0; bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 1000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192
 
       - name: 'Run performance tests'
-        run: cd kafka_2.13-3.4.0; bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt
+        run: cd kafka_2.13-3.4.0; bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt; cat output.txt
 
       - name: 'Store benchmark result'
         uses: benchmark-action/github-action-benchmark@v1
