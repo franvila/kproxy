@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+#/*
+# * Copyright Kroxylicious Authors.
+# *
+# * Licensed under the Apache Software License version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0
+# */
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 OUTPUT_FILE=$1
