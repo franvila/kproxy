@@ -76,7 +76,7 @@ jobs:
         with:
           name: kafka producer perf test Benchmark
           tool: 'customSmallerIsBetter'
-          output-file-path: output.txt
+          output-file-path: output.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           alert-threshold: '130%'
