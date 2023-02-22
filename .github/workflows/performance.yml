@@ -28,7 +28,7 @@ jobs:
   build:
     name: Benchmark
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/perf') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-8-cores
 
     steps:
       - name: 'Check out repository'
@@ -75,7 +75,7 @@ jobs:
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: kafka producer perf test Benchmark
-          tool: 'cargo'
+          tool: 'customSmallerIsBetter'
           output-file-path: output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
