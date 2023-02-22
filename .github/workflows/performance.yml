@@ -28,7 +28,7 @@ jobs:
   build:
     name: Benchmark
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/perf') }}
-    runs-on: ubuntu-latest-8-cores
+    runs-on: ubuntu-latest
 
     steps:
       - name: 'Check out repository'
