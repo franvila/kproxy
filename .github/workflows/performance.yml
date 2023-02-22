@@ -23,6 +23,7 @@ on:
       kafkaVersion:
         description: 'The version of kafka used to test the performance'
         required: false
+        default: '3.4.0'
 
 jobs:
   build:
@@ -80,6 +81,7 @@ jobs:
           name: kafka producer perf test Benchmark
           tool: 'customSmallerIsBetter'
           output-file-path: output.json
+          gh-pages-branch: benchmark-gh-pages
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           alert-threshold: '130%'
