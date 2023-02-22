@@ -76,7 +76,7 @@ jobs:
           tool: 'customSmallerIsBetter'
           output-file-path: output.json
           gh-pages-branch: gh-pages
-          benchmark-data-dir-path: docs/benchmarck
+          benchmark-data-dir-path: benchmarck
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
           alert-threshold: '150%'
