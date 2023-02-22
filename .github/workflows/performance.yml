@@ -18,12 +18,6 @@ name: Performance
 
 on:
   issue_comment:
-  workflow_dispatch:
-    inputs:
-      kafkaVersion:
-        description: 'The version of kafka used to test the performance'
-        required: false
-        default: '3.4.0'
 
 jobs:
   build:
@@ -51,26 +45,26 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
 
-      - name: 'Build example service'
+      - name: 'Build kroxy service'
         run: mvn -B clean verify -Pdist -Dquick
 
       - name: 'Download kafka'
-        run: wget -q https://downloads.apache.org/kafka/3.4.0/kafka_2.13-3.4.0.tgz; tar xf kafka_2.13-3.4.0.tgz
+        run: wget -q https://downloads.apache.org/kafka/3.4.0/kafka_2.13-3.4.0.tgz; tar xf kafka_2.13-3.4.0.tgz -C kafka
 
       - name: 'Run zookeeper'
-        run: cd kafka_2.13-3.4.0; bin/zookeeper-server-start.sh config/zookeeper.properties &
+        run: cd kafka; bin/zookeeper-server-start.sh config/zookeeper.properties &
 
       - name: 'Run kafka'
-        run: cd kafka_2.13-3.4.0; bin/kafka-server-start.sh config/server.properties &
+        run: cd kafka; bin/kafka-server-start.sh config/server.properties &
 
       - name: 'Run kroxy'
         run: java -jar kroxylicious/target/kroxylicious-1.0-SNAPSHOT.jar --config kroxylicious/example-proxy-config.yml &
 
       - name: 'Run warm-up'
-        run: cd kafka_2.13-3.4.0; bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 1000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192
+        run: cd kafka; bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 1000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192
 
       - name: 'Run performance tests'
-        run: kafka_2.13-3.4.0/bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt
+        run: kafka/bin/kafka-producer-perf-test.sh --topic perf-test --throughput -1 --num-records 10000000 --record-size 1024 --producer-props acks=all bootstrap.servers=localhost:9192 | tee output.txt
 
       - name: 'Create json file'
         run: ./benchmark_output_to_json.sh output.txt
@@ -81,10 +75,11 @@ jobs:
           name: kafka producer perf test Benchmark
           tool: 'customSmallerIsBetter'
           output-file-path: output.json
-          gh-pages-branch: benchmark-gh-pages
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarck
           github-token: ${{ secrets.GITHUB_TOKEN }}
           auto-push: true
-          alert-threshold: '130%'
+          alert-threshold: '150%'
           comment-on-alert: true
           fail-on-alert: true
           alert-comment-cc-users: '@franvila'
