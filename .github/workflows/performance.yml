@@ -43,6 +43,7 @@ jobs:
       - name: 'Check out repository'
         uses: actions/checkout@v3
         with:
+          ref: ${{ steps.comment-branch.outputs.head_ref }}
           submodules: 'true'
 
       - name: 'Set up Java'
