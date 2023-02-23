@@ -6,8 +6,9 @@
 #
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-OUTPUT_FILE=$1
-STATS=$(tail -n 1 "$OUTPUT_FILE")
+ENTRY_FILE=$1
+OUTPUT_FILE=${2:-output.jso}
+STATS=$(tail -n 1 "$ENTRY_FILE")
 
 # STATS format: 10000000 records sent, 62987.761478 records/sec (61.51 MB/sec), 13.64 ms avg latency, 1301.00 ms max latency, 0 ms 50th, 27 ms 95th, 332 ms 99th, 1285 ms 99.9th.
 
@@ -23,4 +24,4 @@ JSON_FILE="[ {\"name\": \"AVG Latency\", \"unit\": \"ms\", \"value\": $LATENCY_A
 {\"name\": \"95th Latency\", \"unit\": \"ms\", \"value\": $LATENCY_95TH_MS},
 {\"name\": \"99.9th Latency\", \"unit\": \"ms\", \"value\": $LATENCY_99TH_MS}]"
 
-echo "$JSON_FILE" | jq . > "$DIR"/output.json
+echo "$JSON_FILE" | jq . > "$DIR/$OUTPUT_FILE"
