@@ -28,17 +28,8 @@ jobs:
 
     steps:
       - uses: xt0rted/pull-request-comment-branch@v1
+        if: success()
         id: comment-branch
-
-      - name: 'check variables'
-        run: |
-          echo A comment on commit_id $NUMBER $NUMBER2
-        env:
-          NUMBER: ${{ github.ref }}
-          NUMBER2: ${{ github.head_ref }}
-          NUMBER3: ${{ github.event.pull_request.head.ref }}
-          NUMBER4: ${{ github.sha }}
-          NUMBER5: ${{ steps.comment-branch.outputs.head_ref }}
 
       - name: 'Check out repository'
         uses: actions/checkout@v3
