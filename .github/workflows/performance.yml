@@ -22,8 +22,8 @@ on:
 
 jobs:
   build:
-    name: Benchmark ${{github.event}}
-    if: ${{ (github.event.issue.pull_request && contains(github.event.comment.body, '/perf')) || contains(github.event, 'workflow') }}
+    name: Benchmark
+    if: ${{ (github.event.issue.pull_request && contains(github.event.comment.body, '/perf')) || contains(github.event_name, 'workflow') }}
     runs-on: ubuntu-latest
 
     steps:
