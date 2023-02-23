@@ -31,9 +31,11 @@ jobs:
     steps:
       - name: 'check variables'
         run: |
-          echo A comment on commit_id $NUMBER
+          echo A comment on commit_id $NUMBER $NUMBER2
         env:
-          NUMBER: ${{ github.event.commit_id }}
+          NUMBER: ${{ github.ref }}
+          NUMBER2: ${{ github.head_ref }}
+          NUMBER3: ${{ github.event.pull_request.head.ref }}
 
       - name: 'Check out repository'
         uses: actions/checkout@v3
