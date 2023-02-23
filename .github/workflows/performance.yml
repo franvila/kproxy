@@ -29,6 +29,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: 'check variables'
+        run: |
+          echo A comment on commit_id $NUMBER
+        env:
+          NUMBER: ${{ github.event.commit_id }}
 
       - name: 'Check out repository'
         uses: actions/checkout@v3
