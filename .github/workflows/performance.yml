@@ -35,7 +35,7 @@ jobs:
           NUMBER2: ${{ github.head_ref }}
           NUMBER3: ${{ github.event.pull_request.head.ref }}
 
-      - name: Print environment variables
+      - name: 'Print environment variables'
         uses: FranzDiebold/github-env-vars-action@v2
         run: |
           echo "CI_REPOSITORY_SLUG=$CI_REPOSITORY_SLUG"
