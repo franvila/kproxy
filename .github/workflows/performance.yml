@@ -23,7 +23,7 @@ on:
 jobs:
   build:
     name: Benchmark
-    if: ${{ (github.event.issue.pull_request && contains(github.event.comment.body, '/perf')) || github.event.workflow_dispatch }}
+    if: ${{ (github.event.issue.pull_request && contains(github.event.comment.body, '/perf')) || contains(github.event, 'workflow') }}
     runs-on: ubuntu-latest
 
     steps:
