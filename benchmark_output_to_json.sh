@@ -25,3 +25,4 @@ JSON_FILE="[ {\"name\": \"AVG Latency\", \"unit\": \"ms\", \"value\": $LATENCY_A
 {\"name\": \"99.9th Latency\", \"unit\": \"ms\", \"value\": $LATENCY_99TH_MS}]"
 
 echo "$JSON_FILE" | jq . > "$DIR/$OUTPUT_FILE"
+
