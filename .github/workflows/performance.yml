@@ -27,10 +27,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: 'Check out repository'
         uses: actions/checkout@v3
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.commit_id }}
           submodules: 'true'
 
       - name: 'Set up Java'
