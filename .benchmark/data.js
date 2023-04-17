@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1681719102296,
+  "lastUpdate": 1681719638705,
   "repoUrl": "https://github.com/franvila/kproxy",
   "entries": {
     "kafka producer perf test Benchmark": [
@@ -184,6 +184,43 @@ window.BENCHMARK_DATA = {
           {
             "name": "99th Latency",
             "value": 849,
+            "unit": "ms"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Francisco Vila",
+            "username": "franvila",
+            "email": "57452611+franvila@users.noreply.github.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "f72c30df9d1636d40f5343a7fdf006c0d8fc6ef8",
+          "message": "Merge pull request #45 from franvila/enhancePerfAction\n\nAdding summary-always to the PR",
+          "timestamp": "2023-04-17T08:04:37Z",
+          "url": "https://github.com/franvila/kproxy/commit/f72c30df9d1636d40f5343a7fdf006c0d8fc6ef8"
+        },
+        "date": 1681719637494,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "AVG Latency",
+            "value": 4.17,
+            "unit": "ms"
+          },
+          {
+            "name": "95th Latency",
+            "value": 3,
+            "unit": "ms"
+          },
+          {
+            "name": "99th Latency",
+            "value": 49,
             "unit": "ms"
           }
         ]
