@@ -6,14 +6,12 @@
 
 package io.kroxylicious.kms.provider.kroxylicious.inmemory;
 
-import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
 
 import io.kroxylicious.kms.provider.kroxylicious.inmemory.IntegrationTestingKmsService.Config;
 import io.kroxylicious.kms.service.TestKekManager;
 import io.kroxylicious.kms.service.TestKmsFacade;
-import io.kroxylicious.kms.service.UnknownAliasException;
 
 public class InMemoryTestKmsFacade implements TestKmsFacade<Config, UUID, InMemoryEdek> {
 
@@ -51,32 +49,17 @@ public class InMemoryTestKmsFacade implements TestKmsFacade<Config, UUID, InMemo
     }
 
     private class InMemoryTestKekManager implements TestKekManager {
-        @Override
-        public void generateKek(String alias) {
-            Objects.requireNonNull(alias);
 
-            try {
-                kms.resolveAlias(alias).toCompletableFuture().join();
-                throw new AlreadyExistsException(alias);
-            }
-            catch (CompletionException e) {
-                if (e.getCause() instanceof UnknownAliasException) {
-                    var kekId = kms.generateKey();
-                    kms.createAlias(kekId, alias);
-                }
-                else {
-                    throw unwrapRuntimeException(e);
-                }
-            }
+        @Override
+        public void create(String alias) {
+            var kekId = kms.generateKey();
+            kms.createAlias(kekId, alias);
         }
 
         @Override
-        public void deleteKek(String alias) {
-            Objects.requireNonNull(alias);
+        public UUID read(String alias) {
             try {
-                var kekRef = kms.resolveAlias(alias).toCompletableFuture().join();
-                kms.deleteAlias(alias);
-                kms.deleteKey(kekRef);
+                return kms.resolveAlias(alias).toCompletableFuture().join();
             }
             catch (CompletionException e) {
                 throw unwrapRuntimeException(e);
@@ -84,36 +67,19 @@ public class InMemoryTestKmsFacade implements TestKmsFacade<Config, UUID, InMemo
         }
 
         @Override
-        public void rotateKek(String alias) {
-            Objects.requireNonNull(alias);
-
-            try {
-                kms.resolveAlias(alias).toCompletableFuture().join();
-                var kekId = kms.generateKey();
-                kms.createAlias(kekId, alias);
-            }
-            catch (CompletionException e) {
-                throw unwrapRuntimeException(e);
-            }
+        public void rotate(String alias) {
+            create(alias);
         }
 
         @Override
-        public boolean exists(String alias) {
-            try {
-                kms.resolveAlias(alias).toCompletableFuture().join();
-                return true;
-            }
-            catch (CompletionException e) {
-                if (e.getCause() instanceof UnknownAliasException) {
-                    return false;
-                }
-                throw unwrapRuntimeException(e);
-            }
+        public void delete(String alias) {
+            var kekRef = read(alias);
+            kms.deleteAlias(alias);
+            kms.deleteKey(kekRef);
         }
 
         private RuntimeException unwrapRuntimeException(Exception e) {
             return e.getCause() instanceof RuntimeException re ? re : new RuntimeException(e.getCause());
         }
-
     }
 }

@@ -126,58 +126,15 @@ public abstract class AbstractVaultTestKmsFacade implements TestKmsFacade<Config
     }
 
     class VaultTestKekManager implements TestKekManager {
-        @Override
-        public void generateKek(String alias) {
-            Objects.requireNonNull(alias);
-
-            if (exists(alias)) {
-                throw new AlreadyExistsException(alias);
-            }
-            else {
-                create(alias);
-            }
-        }
 
         @Override
-        public void deleteKek(String alias) {
-            if (exists(alias)) {
-                delete(alias);
-            }
-            else {
-                throw new UnknownAliasException(alias);
-            }
-
-        }
-
-        @Override
-        public void rotateKek(String alias) {
-            Objects.requireNonNull(alias);
-
-            if (exists(alias)) {
-                rotate(alias);
-            }
-            else {
-                throw new UnknownAliasException(alias);
-            }
-        }
-
-        @Override
-        public boolean exists(String alias) {
-            try {
-                read(alias);
-                return true;
-            }
-            catch (UnknownAliasException uae) {
-                return false;
-            }
-        }
-
-        private VaultResponse.ReadKeyData create(String keyId) {
+        public void create(String keyId) {
             var request = createVaultPost(KEYS_PATH.formatted(encode(keyId, UTF_8)), HttpRequest.BodyPublishers.noBody());
-            return sendRequest(keyId, request, VAULT_RESPONSE_READ_KEY_DATA_TYPEREF).data();
+            sendRequest(keyId, request, VAULT_RESPONSE_READ_KEY_DATA_TYPEREF);
         }
 
-        private void delete(String keyId) {
+        @Override
+        public void delete(String keyId) {
             var update = createVaultPost((KEYS_PATH + "/config").formatted(encode(keyId, UTF_8)),
                     HttpRequest.BodyPublishers.ofString(getBody(new UpdateKeyConfigRequest(true))));
             sendRequest(keyId, update, VAULT_RESPONSE_READ_KEY_DATA_TYPEREF);
@@ -186,16 +143,17 @@ public abstract class AbstractVaultTestKmsFacade implements TestKmsFacade<Config
             sendRequestExpectingNoContentResponse(delete);
         }
 
-        private VaultResponse.ReadKeyData read(String keyId) {
+        @Override
+        public VaultResponse.ReadKeyData read(String keyId) {
             var request = createVaultGet(KEYS_PATH.formatted(encode(keyId, UTF_8)));
             return sendRequest(keyId, request, VAULT_RESPONSE_READ_KEY_DATA_TYPEREF).data();
         }
 
-        private VaultResponse.ReadKeyData rotate(String keyId) {
+        @Override
+        public void rotate(String keyId) {
             var request = createVaultPost((KEYS_PATH + "/rotate").formatted(encode(keyId, UTF_8)), HttpRequest.BodyPublishers.noBody());
-            return sendRequest(keyId, request, VAULT_RESPONSE_READ_KEY_DATA_TYPEREF).data();
+            sendRequest(keyId, request, VAULT_RESPONSE_READ_KEY_DATA_TYPEREF);
         }
-
     }
 
     private HttpRequest createVaultGet(String path) {

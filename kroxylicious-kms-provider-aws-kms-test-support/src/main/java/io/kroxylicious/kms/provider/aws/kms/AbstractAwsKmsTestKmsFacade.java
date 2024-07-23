@@ -13,7 +13,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Instant;
-import java.util.Objects;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -103,52 +102,9 @@ public abstract class AbstractAwsKmsTestKmsFacade implements TestKmsFacade<Confi
     }
 
     class AwsKmsTestKekManager implements TestKekManager {
-        @Override
-        public void generateKek(String alias) {
-            Objects.requireNonNull(alias);
-
-            if (exists(alias)) {
-                throw new AlreadyExistsException(alias);
-            }
-            else {
-                create(alias);
-            }
-        }
 
         @Override
-        public void rotateKek(String alias) {
-            Objects.requireNonNull(alias);
-
-            if (!exists(alias)) {
-                throw new UnknownAliasException(alias);
-            }
-            else {
-                rotate(alias);
-            }
-        }
-
-        @Override
-        public void deleteKek(String alias) {
-            if (!exists(alias)) {
-                throw new UnknownAliasException(alias);
-            }
-            else {
-                delete(alias);
-            }
-        }
-
-        @Override
-        public boolean exists(String alias) {
-            try {
-                read(alias);
-                return true;
-            }
-            catch (UnknownAliasException uae) {
-                return false;
-            }
-        }
-
-        private void create(String alias) {
+        public void create(String alias) {
             final CreateKeyRequest createKey = new CreateKeyRequest("key for alias: " + alias);
             var createRequest = createRequest(createKey, TRENT_SERVICE_CREATE_KEY);
             var createKeyResponse = sendRequest(alias, createRequest, CREATE_KEY_RESPONSE_TYPE_REF);
@@ -158,13 +114,15 @@ public abstract class AbstractAwsKmsTestKmsFacade implements TestKmsFacade<Confi
             sendRequestExpectingNoResponse(aliasRequest);
         }
 
-        private DescribeKeyResponse read(String alias) {
+        @Override
+        public DescribeKeyResponse read(String alias) {
             final DescribeKeyRequest describeKey = new DescribeKeyRequest(AwsKms.ALIAS_PREFIX + alias);
             var request = createRequest(describeKey, TRENT_SERVICE_DESCRIBE_KEY);
             return sendRequest(alias, request, DESCRIBE_KEY_RESPONSE_TYPE_REF);
         }
 
-        private void rotate(String alias) {
+        @Override
+        public void rotate(String alias) {
             var key = read(alias);
             final RotateKeyRequest rotateKey = new RotateKeyRequest(key.keyMetadata().keyId());
             var rotateKeyRequest = createRequest(rotateKey, TRENT_SERVICE_ROTATE_KEY);
@@ -191,7 +149,8 @@ public abstract class AbstractAwsKmsTestKmsFacade implements TestKmsFacade<Confi
             sendRequestExpectingNoResponse(aliasRequest);
         }
 
-        private void delete(String alias) {
+        @Override
+        public void delete(String alias) {
             var key = read(alias);
             var keyId = key.keyMetadata().keyId();
             final ScheduleKeyDeletionRequest request = new ScheduleKeyDeletionRequest(keyId, MINIMUM_ALLOWED_EXPIRY_DAYS);
