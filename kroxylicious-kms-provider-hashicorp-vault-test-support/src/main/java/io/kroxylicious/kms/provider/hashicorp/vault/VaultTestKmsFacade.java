@@ -12,6 +12,8 @@ import org.testcontainers.DockerClientFactory;
 import org.testcontainers.utility.DockerImageName;
 import org.testcontainers.vault.VaultContainer;
 
+import io.kroxylicious.kms.provider.hashicorp.vault.config.Experimental;
+
 import edu.umd.cs.findbugs.annotations.NonNull;
 
 public class VaultTestKmsFacade extends AbstractVaultTestKmsFacade {
@@ -23,6 +25,11 @@ public class VaultTestKmsFacade extends AbstractVaultTestKmsFacade {
     @Override
     public boolean isAvailable() {
         return DockerClientFactory.instance().isDockerAvailable();
+    }
+
+    @Override
+    public Experimental getExperimentalConfig() {
+        return null;
     }
 
     @Override

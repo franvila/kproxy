@@ -72,4 +72,22 @@ public class KubeVaultTestKmsFacade extends AbstractVaultTestKmsFacade {
     public String getVaultVersion() {
         return vault.getVersionInstalled();
     }
+
+    @Override
+    protected int getElementExpireAfterWriteSeconds() {
+        return vault.getEncryptionDekExpireAfterWriteSeconds();
+    }
+
+    protected void setEncryptionDekExpireAfterWriteSeconds(int value) {
+        vault.setEncryptionDekExpireAfterWriteSeconds(value);
+    }
+
+    @Override
+    protected int getElementRefreshAfterWriteSeconds() {
+        return vault.getEncryptionDekRefreshAfterWriteSeconds();
+    }
+
+    protected void setEncryptionDekRefreshAfterWriteSeconds(int value) {
+        vault.setEncryptionDekRefreshAfterWriteSeconds(value);
+    }
 }

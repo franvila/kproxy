@@ -15,21 +15,21 @@ import java.util.stream.Stream;
  * @param <K> The key reference
  * @param <E> The type of encrypted DEK
  */
-public interface TestKmsFacadeFactory<C, K, E> {
+public interface TestKmsFacadeFactory<C, K, E, X> {
 
     /**
      * Creates a TestKmsFacade instance
      *
      * @return instance
      */
-    TestKmsFacade<C, K, E> build();
+    TestKmsFacade<C, K, E, X> build();
 
     /**
      * Discovers the available {@link TestKmsFacadeFactory}.
      * @return factories
      */
     @SuppressWarnings("unchecked")
-    static <C, K, E> Stream<TestKmsFacadeFactory<C, K, E>> getTestKmsFacadeFactories() {
+    static <C, K, E, X> Stream<TestKmsFacadeFactory<C, K, E, X>> getTestKmsFacadeFactories() {
         return ServiceLoader.load(TestKmsFacadeFactory.class).stream()
                 .map(ServiceLoader.Provider::get);
     }

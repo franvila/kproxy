@@ -38,11 +38,14 @@ public class Vault {
     public static final String VAULT_HELM_REPOSITORY_URL = "https://helm.releases.hashicorp.com";
     public static final String VAULT_HELM_REPOSITORY_NAME = "hashicorp";
     public static final String VAULT_HELM_CHART_NAME = "hashicorp/vault";
+    private static final int DEFAULT_EXPERIMENTAL_CONFIG_VALUE_SECONDS = 600;
     private static final Logger LOGGER = LoggerFactory.getLogger(Vault.class);
     private static final String VAULT_CMD = "vault";
     private final String deploymentNamespace;
     private final String vaultRootToken;
     private String version;
+    private int encryptionDekExpireAfterWriteSeconds;
+    private int encryptionDekRefreshAfterWriteSeconds;
 
     /**
      * Instantiates a new Vault.
@@ -52,6 +55,8 @@ public class Vault {
     public Vault(String vaultRootToken) {
         this.deploymentNamespace = VAULT_DEFAULT_NAMESPACE;
         this.vaultRootToken = vaultRootToken;
+        this.encryptionDekExpireAfterWriteSeconds = DEFAULT_EXPERIMENTAL_CONFIG_VALUE_SECONDS;
+        this.encryptionDekRefreshAfterWriteSeconds = DEFAULT_EXPERIMENTAL_CONFIG_VALUE_SECONDS;
     }
 
     /**
@@ -125,5 +130,21 @@ public class Vault {
      */
     public URI getVaultUrl() {
         return URI.create("http://" + DeploymentUtils.getNodePortServiceAddress(deploymentNamespace, VAULT_SERVICE_NAME));
+    }
+
+    public int getEncryptionDekExpireAfterWriteSeconds() {
+        return this.encryptionDekExpireAfterWriteSeconds;
+    }
+
+    public void setEncryptionDekExpireAfterWriteSeconds(int value) {
+        this.encryptionDekExpireAfterWriteSeconds = value;
+    }
+
+    public int getEncryptionDekRefreshAfterWriteSeconds() {
+        return this.encryptionDekRefreshAfterWriteSeconds;
+    }
+
+    public void setEncryptionDekRefreshAfterWriteSeconds(int value) {
+        this.encryptionDekRefreshAfterWriteSeconds = value;
     }
 }

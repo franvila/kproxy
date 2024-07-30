@@ -11,12 +11,13 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.DockerClientFactory;
 
 import io.kroxylicious.kms.provider.aws.kms.config.Config;
+import io.kroxylicious.kms.provider.aws.kms.config.Experimental;
 import io.kroxylicious.kms.service.AbstractTestKmsFacadeTest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
-class AwsKmsTestKmsFacadeTest extends AbstractTestKmsFacadeTest<Config, String, AwsKmsEdek> {
+class AwsKmsTestKmsFacadeTest extends AbstractTestKmsFacadeTest<Config, String, AwsKmsEdek, Experimental> {
 
     AwsKmsTestKmsFacadeTest() {
         super(new AwsKmsTestKmsFacadeFactory());

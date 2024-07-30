@@ -21,6 +21,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.kroxylicious.kms.provider.hashicorp.vault.config.Config;
+import io.kroxylicious.kms.provider.hashicorp.vault.config.Experimental;
 import io.kroxylicious.kms.service.KmsException;
 import io.kroxylicious.kms.service.TestKekManager;
 import io.kroxylicious.kms.service.TestKmsFacade;
@@ -32,7 +33,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import static java.net.URLEncoder.encode;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public abstract class AbstractVaultTestKmsFacade implements TestKmsFacade<Config, String, VaultEdek> {
+public abstract class AbstractVaultTestKmsFacade implements TestKmsFacade<Config, String, VaultEdek, Experimental> {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<VaultResponse<VaultResponse.ReadKeyData>> VAULT_RESPONSE_READ_KEY_DATA_TYPEREF = new TypeReference<>() {
     };
@@ -119,6 +120,15 @@ public abstract class AbstractVaultTestKmsFacade implements TestKmsFacade<Config
     protected final URI getVaultTransitEngineUrl() {
         return getVaultUrl().resolve("v1/transit/");
     }
+
+    @Override
+    public Experimental getExperimentalConfig() {
+        return new Experimental(getElementRefreshAfterWriteSeconds(), getElementExpireAfterWriteSeconds());
+    }
+
+    protected abstract int getElementExpireAfterWriteSeconds();
+
+    protected abstract int getElementRefreshAfterWriteSeconds();
 
     @Override
     public TestKekManager getTestKekManager() {

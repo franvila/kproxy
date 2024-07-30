@@ -20,6 +20,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.kroxylicious.kms.provider.aws.kms.config.Config;
+import io.kroxylicious.kms.provider.aws.kms.config.Experimental;
 import io.kroxylicious.kms.provider.aws.kms.model.CreateAliasRequest;
 import io.kroxylicious.kms.provider.aws.kms.model.CreateKeyRequest;
 import io.kroxylicious.kms.provider.aws.kms.model.CreateKeyResponse;
@@ -41,7 +42,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public abstract class AbstractAwsKmsTestKmsFacade implements TestKmsFacade<Config, String, AwsKmsEdek> {
+public abstract class AbstractAwsKmsTestKmsFacade implements TestKmsFacade<Config, String, AwsKmsEdek, Experimental> {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int MINIMUM_ALLOWED_EXPIRY_DAYS = 7;
     private static final TypeReference<CreateKeyResponse> CREATE_KEY_RESPONSE_TYPE_REF = new TypeReference<>() {
@@ -80,6 +81,15 @@ public abstract class AbstractAwsKmsTestKmsFacade implements TestKmsFacade<Confi
     public Config getKmsServiceConfig() {
         return new Config(getAwsUrl(), new InlinePassword(getAccessKey()), new InlinePassword(getSecretKey()), getRegion(), null);
     }
+
+    @Override
+    public Experimental getExperimentalConfig() {
+        return new Experimental(getResolvedAliasExpireAfterWriteSeconds(), getResolvedAliasRefreshAfterWriteSeconds());
+    }
+
+    protected abstract int getResolvedAliasRefreshAfterWriteSeconds();
+
+    protected abstract int getResolvedAliasExpireAfterWriteSeconds();
 
     protected abstract String getRegion();
 

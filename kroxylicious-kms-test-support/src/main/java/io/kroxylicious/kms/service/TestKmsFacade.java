@@ -11,8 +11,9 @@ package io.kroxylicious.kms.service;
  * @param <C> The config type
  * @param <K> The key reference
  * @param <E> The type of encrypted DEK
+ * @param <X> the experimental type
  */
-public interface TestKmsFacade<C, K, E> extends AutoCloseable {
+public interface TestKmsFacade<C, K, E, X> extends AutoCloseable {
 
     /**
      * Returns true of this facade is available, or false otherwise.
@@ -50,6 +51,12 @@ public interface TestKmsFacade<C, K, E> extends AutoCloseable {
      * @return service configuration.
      */
     C getKmsServiceConfig();
+
+    /**
+     * Gets the configuration Kroxylicious will need to refresh the DeK when using KMS.
+     * @return experimental configuration.
+     */
+    X getExperimentalConfig();
 
     /**
      * Returns the actual {@link Kms} in-use by Kroxylicious.  This is an optional method.

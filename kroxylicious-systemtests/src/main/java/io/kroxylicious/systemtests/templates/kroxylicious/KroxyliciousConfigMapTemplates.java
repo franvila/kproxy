@@ -17,7 +17,6 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 
 import io.kroxylicious.kms.service.TestKmsFacade;
 import io.kroxylicious.systemtests.Constants;
-import io.kroxylicious.systemtests.resources.kms.Experimental;
 
 /**
  * The type Kroxylicious config templates.
@@ -61,12 +60,17 @@ public final class KroxyliciousConfigMapTemplates {
      * @param testKmsFacade the test kms facade
      * @return the config map builder
      */
-    public static ConfigMapBuilder kroxyliciousRecordEncryptionConfig(String clusterName, String namespaceName, TestKmsFacade<?, ?, ?> testKmsFacade, Experimental experimental) {
+//    public static ConfigMapBuilder kroxyliciousRecordEncryptionConfig(String clusterName, String namespaceName, TestKmsFacade<?, ?, ?> testKmsFacade, Experimental experimental) {
+//        return baseKroxyliciousConfig(namespaceName)
+//                .addToData("config.yaml", getRecordEncryptionConfigMap(clusterName, testKmsFacade, experimental));
+//    }
+
+    public static ConfigMapBuilder kroxyliciousRecordEncryptionConfig(String clusterName, String namespaceName, TestKmsFacade<?, ?, ?, ?> testKmsFacade) {
         return baseKroxyliciousConfig(namespaceName)
-                .addToData("config.yaml", getRecordEncryptionConfigMap(clusterName, testKmsFacade, experimental));
+                .addToData("config.yaml", getRecordEncryptionConfigMap(clusterName, testKmsFacade));
     }
 
-    private static String buildEncryptionFilter(TestKmsFacade<?, ?, ?> testKmsFacade, Experimental experimental) {
+    private static String buildEncryptionFilter(TestKmsFacade<?, ?, ?, ?> testKmsFacade) {
         return """
                 - type: RecordEncryption
                   config:
@@ -79,8 +83,24 @@ public final class KroxyliciousConfigMapTemplates {
                     experimental:
                       %s
                 """.formatted(testKmsFacade.getKmsServiceClass().getSimpleName(), getNestedYaml(testKmsFacade.getKmsServiceConfig(), 6),
-                getNestedYaml(experimental, 6));
+                getNestedYaml(testKmsFacade.getExperimentalConfig(), 6));
     }
+
+//    private static String buildEncryptionFilter(TestKmsFacade<?, ?, ?> testKmsFacade, Experimental experimental) {
+//        return """
+//                - type: RecordEncryption
+//                  config:
+//                    kms: %s
+//                    kmsConfig:
+//                      %s
+//                    selector: TemplateKekSelector
+//                    selectorConfig:
+//                      template: "KEK_${topicName}"
+//                    experimental:
+//                      %s
+//                """.formatted(testKmsFacade.getKmsServiceClass().getSimpleName(), getNestedYaml(testKmsFacade.getKmsServiceConfig(), 6),
+//                getNestedYaml(experimental, 6));
+//    }
 
     private static String getNestedYaml(Object config, int indent) {
         String configYaml;
@@ -95,8 +115,8 @@ public final class KroxyliciousConfigMapTemplates {
         return configYaml;
     }
 
-    private static String getRecordEncryptionConfigMap(String clusterName, TestKmsFacade<?, ?, ?> testKmsFacade, Experimental experimental) {
-        String configYaml = buildEncryptionFilter(testKmsFacade, experimental);
+    private static String getRecordEncryptionConfigMap(String clusterName, TestKmsFacade<?, ?, ?, ?> testKmsFacade) {
+        String configYaml = buildEncryptionFilter(testKmsFacade);
 
         return """
                 adminHttp:
@@ -117,6 +137,29 @@ public final class KroxyliciousConfigMapTemplates {
                 """
                 .formatted(Constants.KROXY_SERVICE_NAME, clusterName, Constants.KAFKA_DEFAULT_NAMESPACE, configYaml);
     }
+
+//    private static String getRecordEncryptionConfigMap(String clusterName, TestKmsFacade<?, ?, ?> testKmsFacade, Experimental experimental) {
+//        String configYaml = buildEncryptionFilter(testKmsFacade, experimental);
+//
+//        return """
+//                adminHttp:
+//                  endpoints:
+//                    prometheus: {}
+//                virtualClusters:
+//                  my-cluster-proxy:
+//                    clusterNetworkAddressConfigProvider:
+//                      type: PortPerBrokerClusterNetworkAddressConfigProvider
+//                      config:
+//                        bootstrapAddress: localhost:9292
+//                        brokerAddressPattern: %s
+//                    targetCluster:
+//                      bootstrap_servers: %s-kafka-bootstrap.%s.svc.cluster.local:9092
+//                    logFrames: false
+//                filters:
+//                %s
+//                """
+//                .formatted(Constants.KROXY_SERVICE_NAME, clusterName, Constants.KAFKA_DEFAULT_NAMESPACE, configYaml);
+//    }
 
     private static String getDefaultKroxyliciousConfigMap(String clusterName) {
         return """

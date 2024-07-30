@@ -7,12 +7,13 @@
 package io.kroxylicious.kms.provider.aws.kms;
 
 import io.kroxylicious.kms.provider.aws.kms.config.Config;
+import io.kroxylicious.kms.provider.aws.kms.config.Experimental;
 import io.kroxylicious.kms.service.TestKmsFacadeFactory;
 
 /**
  * Factory for {@link AwsKmsTestKmsFacade}s.
  */
-public class AwsKmsTestKmsFacadeFactory extends AbstractAwsKmsTestKmsFacadeFactory implements TestKmsFacadeFactory<Config, String, AwsKmsEdek> {
+public class AwsKmsTestKmsFacadeFactory extends AbstractAwsKmsTestKmsFacadeFactory implements TestKmsFacadeFactory<Config, String, AwsKmsEdek, Experimental> {
     /**
      * {@inheritDoc}
      */

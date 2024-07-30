@@ -22,12 +22,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * @param <E> The type of encrypted DEK
  */
 @SuppressWarnings("java:S5960") // this is test code, it exists in the main module to facilitate its use by concrete test cases
-public abstract class AbstractTestKmsFacadeTest<C, K, E> {
+public abstract class AbstractTestKmsFacadeTest<C, K, E, X> {
 
     private static final String ALIAS = "myalias";
-    protected final TestKmsFacadeFactory<C, K, E> factory;
+    protected final TestKmsFacadeFactory<C, K, E, X> factory;
 
-    protected AbstractTestKmsFacadeTest(TestKmsFacadeFactory<C, K, E> factory) {
+    protected AbstractTestKmsFacadeTest(TestKmsFacadeFactory<C, K, E, X> factory) {
         Objects.requireNonNull(factory);
         this.factory = factory;
     }
