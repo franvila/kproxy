@@ -2,5 +2,15 @@
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "extends": [
         "config:recommended"
+    ],
+    "customManagers": [
+      {
+        "customType": "regex",
+        "fileMatch": [".*y[a]?ml$"],
+        "matchStrings": [
+          "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s?tag:\\s?\\\"?(?<currentValue>.*?)\\n"
+        ],
+        "datasourceTemplate": "docker"
+      }
     ]
 }
