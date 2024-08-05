@@ -6,9 +6,9 @@
     "customManagers": [
       {
         "customType": "regex",
-        "fileMatch": ["\"(^|/)helm\\.yaml$"],
+        "fileMatch": ["(^|/)helm_localstack_overrides\\.yaml$"],
         "matchStrings": [
-          "# renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s?tag:\\s?\\\"?(?<currentValue>.*?)\\n"
+          "#\\s?renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s?tag:\\s?\\\"?(?<currentValue>.*?)\\n"
         ],
         "datasourceTemplate": "docker"
       }
