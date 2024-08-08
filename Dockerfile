@@ -11,7 +11,7 @@ WORKDIR /opt/kroxylicious
 COPY . .
 RUN ./mvnw -q -B clean package -Pdist -Dquick
 USER 185
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.2
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 
 ARG JAVA_VERSION=17
 ARG TARGETOS
