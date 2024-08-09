@@ -1,15 +1,23 @@
 {
     "$schema": "https://docs.renovatebot.com/renovate-schema.json",
     "extends": [
-        "config:recommended",
+        "config:base",
         ":gitSignOff"
     ],
     "customManagers": [
       {
         "customType": "regex",
-        "fileMatch": ["helm_localstack_overrides\\.yaml$"],
+        "fileMatch": ["^helm_localstack_overrides\\.yaml$"],
         "matchStrings": [
           "#\\s?renovate: datasource=(?<datasource>[a-z-]+?)(?: depName=(?<depName>.+?))? packageName=(?<packageName>.+?)(?: versioning=(?<versioning>[a-z-]+?))?\\s?tag:\\s?\\\"?(?<currentValue>.*?)\\n"
+        ],
+        "datasourceTemplate": "docker"
+      },
+      {
+        "customType": "regex",
+        "fileMatch": ["^Constants\\.java$"],
+        "matchStrings": [
+          "\"?CLIENT_IMAGE = (?<depName>.*):(?<currentValue>.*)\""
         ],
         "datasourceTemplate": "docker"
       }
