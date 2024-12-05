@@ -127,7 +127,7 @@ public class KroxyliciousOperatorBuilder {
         return this;
     }
 
-    public KroxyliciousOperatorInstaller createBundleInstallation() {
+    public KroxyliciousOperatorBundleInstaller createBundleInstallation() {
         return new KroxyliciousOperatorBundleInstaller(this);
     }
 }

@@ -961,6 +961,7 @@
                                 </goals>
                                 <phase>process-sources</phase>
                                 <configuration>
+                                    <!--suppress UnresolvedMavenProperty -->
                                     <javaExclusionPattern>(?sm)^[ \t]*// *@formatter:off.*?^[ \t]*// *@formatter:on</javaExclusionPattern>
                                     <directories>
                                         <directory>${project.build.sourceDirectory}</directory>
@@ -974,6 +975,7 @@
                                 </goals>
                                 <phase>process-test-sources</phase>
                                 <configuration>
+                                    <!--suppress UnresolvedMavenProperty -->
                                     <javaExclusionPattern>(?sm)^[ \t]*// *@formatter:off.*?^[ \t]*// *@formatter:on</javaExclusionPattern>
                                     <directories>
                                         <directory>${project.build.testSourceDirectory}</directory>
@@ -1083,6 +1085,7 @@
                                 </goals>
                                 <phase>process-sources</phase>
                                 <configuration>
+                                    <!--suppress UnresolvedMavenProperty -->
                                     <javaExclusionPattern>(?sm)^[ \t]*// *@formatter:off.*?^[ \t]*// *@formatter:on</javaExclusionPattern>
                                     <directories>
                                         <directory>${project.build.sourceDirectory}</directory>
@@ -1096,6 +1099,7 @@
                                 </goals>
                                 <phase>process-test-sources</phase>
                                 <configuration>
+                                    <!--suppress UnresolvedMavenProperty -->
                                     <javaExclusionPattern>(?sm)^[ \t]*// *@formatter:off.*?^[ \t]*// *@formatter:on</javaExclusionPattern>
                                     <directories>
                                         <directory>${project.build.testSourceDirectory}</directory>

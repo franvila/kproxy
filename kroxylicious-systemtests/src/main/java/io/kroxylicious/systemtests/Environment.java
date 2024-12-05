@@ -12,6 +12,9 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Function;
 
+import io.skodjob.testframe.enums.InstallType;
+import io.skodjob.testframe.environment.TestEnvironmentVariables;
+
 /**
  * The type Environment.
  */
@@ -19,6 +22,14 @@ public class Environment {
 
     private Environment() {
     }
+
+    private static final TestEnvironmentVariables ENVIRONMENT_VARIABLES = new TestEnvironmentVariables();
+
+    // ---------------------------------------
+    // Env variables initialization
+    // ---------------------------------------
+    private static final String INSTALL_TYPE_ENV = "INSTALL_TYPE";
+    public static final InstallType INSTALL_TYPE = ENVIRONMENT_VARIABLES.getOrDefault(INSTALL_TYPE_ENV, InstallType::fromString, InstallType.Yaml);
 
     /**
      * Env. variables names

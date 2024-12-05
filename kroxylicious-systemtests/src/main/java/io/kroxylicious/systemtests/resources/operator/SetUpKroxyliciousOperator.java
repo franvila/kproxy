@@ -10,6 +10,7 @@ import io.skodjob.testframe.enums.InstallType;
 import io.skodjob.testframe.installation.InstallationMethod;
 
 import io.kroxylicious.systemtests.Environment;
+import io.kroxylicious.systemtests.k8s.exception.UnknownInstallationType;
 
 public class SetUpKroxyliciousOperator {
     private final InstallationMethod installationMethod;
@@ -29,6 +30,7 @@ public class SetUpKroxyliciousOperator {
     }
 
     private InstallationMethod getInstallationMethod() {
-        return Environment.INSTALL_TYPE == InstallType.Helm ? new HelmInstallation(installationNamespace) : new BundleInstallation(installationNamespace);
+        return Environment.INSTALL_TYPE == InstallType.Yaml ? new BundleInstallation(installationNamespace)
+                : new UnknownInstallationType("Installation type " + Environment.INSTALL_TYPE + " not supported");
     }
 }

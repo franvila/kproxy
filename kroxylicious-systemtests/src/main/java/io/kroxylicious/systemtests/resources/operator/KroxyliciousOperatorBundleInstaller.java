@@ -39,6 +39,7 @@ import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding;
 import io.fabric8.kubernetes.api.model.rbac.Role;
 import io.fabric8.kubernetes.api.model.rbac.RoleBinding;
 import io.fabric8.kubernetes.api.model.rbac.RoleBuilder;
+import io.skodjob.testframe.installation.InstallationMethod;
 
 import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.Environment;
@@ -62,7 +63,7 @@ import static io.kroxylicious.systemtests.k8s.KubeClusterResource.kubeClient;
  * ConfigMap, Deployment, CustomResourceDefinition, preparation of the Namespace). Based on the @code{Environment}
  * values, this class installs Kroxylicious Operator using bundle yamls.
  */
-public class KroxyliciousOperatorBundleInstaller implements KroxyliciousOperatorInstaller {
+public class KroxyliciousOperatorBundleInstaller implements InstallationMethod {
 
     private static final Logger LOGGER = LogManager.getLogger(KroxyliciousOperatorBundleInstaller.class);
     private static final String SEPARATOR = String.join("", Collections.nCopies(76, "="));
@@ -409,7 +410,7 @@ public class KroxyliciousOperatorBundleInstaller implements KroxyliciousOperator
     }
 
     @Override
-    public synchronized void uninstall() {
+    public synchronized void delete() {
         LOGGER.info(SEPARATOR);
         if (IS_EMPTY.test(this)) {
             LOGGER.info("Skip un-installation of the Kroxylicious Operator");
