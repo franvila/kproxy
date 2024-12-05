@@ -41,6 +41,9 @@ public class Environment {
     private static final String AWS_KROXYLICIOUS_ACCESS_KEY_ID_ENV = "AWS_KROXYLICIOUS_ACCESS_KEY_ID";
     private static final String AWS_KROXYLICIOUS_SECRET_ACCESS_KEY_ENV = "AWS_KROXYLICIOUS_SECRET_ACCESS_KEY";
     private static final String AWS_REGION_ENV = "AWS_REGION";
+    private static final String KROXY_ORG_ENV = "DOCKER_ORG";
+    private static final String KROXY_REGISTRY_ENV = "DOCKER_REGISTRY";
+    private static final String KROXY_TAG_ENV = "DOCKER_TAG";
 
     /**
      * The kafka version default value
@@ -79,6 +82,9 @@ public class Environment {
      */
     private static final String SKIP_TEARDOWN_DEFAULT = "false";
     private static final String STRIMZI_FEATURE_GATES_DEFAULT = "";
+    public static final String KROXY_ORG_DEFAULT = KROXY_IMAGE_REPO_DEFAULT.split("/")[1];
+    public static final String KROXY_TAG_DEFAULT = "latest";
+    public static final String KROXY_REGISTRY_DEFAULT = KROXY_IMAGE_REPO_DEFAULT.split("/")[0];
     private static final String CONTAINER_CONFIG_PATH_DEFAULT = System.getProperty("user.home") + "/.docker/config.json";
     private static final String VAULT_CHART_VERSION_DEFAULT = "0.27.0";
     private static final String AWS_LOCALSTACK_CHART_VERSION_DEFAULT = "0.6.15";
@@ -138,6 +144,10 @@ public class Environment {
     public static final String AWS_KROXYLICIOUS_SECRET_ACCESS_KEY = getOrDefault(AWS_KROXYLICIOUS_SECRET_ACCESS_KEY_ENV, AWS_KROXYLICIOUS_SECRET_ACCESS_KEY_DEFAULT);
 
     public static final String AWS_REGION = getOrDefault(AWS_REGION_ENV, AWS_REGION_DEFAULT);
+
+    public static final String KROXY_ORG = getOrDefault(KROXY_ORG_ENV, KROXY_ORG_DEFAULT);
+    public static final String KROXY_TAG = getOrDefault(KROXY_TAG_ENV, KROXY_TAG_DEFAULT);
+    public static final String KROXY_REGISTRY = getOrDefault(KROXY_REGISTRY_ENV, KROXY_REGISTRY_DEFAULT);
 
     private static String getOrDefault(String varName, String defaultValue) {
         return getOrDefault(varName, String::toString, defaultValue);

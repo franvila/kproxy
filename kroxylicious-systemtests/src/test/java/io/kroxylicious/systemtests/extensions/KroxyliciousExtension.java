@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.kroxylicious.systemtests.Constants;
+import io.kroxylicious.systemtests.resources.ResourceManager;
 import io.kroxylicious.systemtests.utils.DeploymentUtils;
 import io.kroxylicious.systemtests.utils.NamespaceUtils;
 
@@ -32,6 +33,7 @@ public class KroxyliciousExtension implements ParameterResolver, BeforeEachCallb
     private static final String K8S_NAMESPACE_KEY = "namespace";
     private static final String EXTENSION_STORE_NAME = "io.kroxylicious.systemtests";
     private final ExtensionContext.Namespace junitNamespace;
+    private final ResourceManager resourceManager = ResourceManager.getInstance();
     private boolean clusterDumpCollected = false;
 
     /**
@@ -43,8 +45,9 @@ public class KroxyliciousExtension implements ParameterResolver, BeforeEachCallb
 
     @Override
     public boolean supportsParameter(ParameterContext parameterContext, ExtensionContext extensionContext) throws ParameterResolutionException {
-        return parameterContext.getParameter().getType().isAssignableFrom(String.class) &&
-                parameterContext.getParameter().getName().toLowerCase().contains("namespace");
+        return (parameterContext.getParameter().getType().isAssignableFrom(String.class)
+                && parameterContext.getParameter().getName().toLowerCase().contains("namespace"))
+                || parameterContext.getParameter().getType().isAssignableFrom(ExtensionContext.class);
     }
 
     @Override
@@ -71,6 +74,7 @@ public class KroxyliciousExtension implements ParameterResolver, BeforeEachCallb
 
     @Override
     public void afterEach(ExtensionContext extensionContext) {
+        ResourceManager.setTestContext(extensionContext);
         String namespace = extractK8sNamespace(extensionContext);
         try {
             Optional<Throwable> exception = extensionContext.getExecutionException();
@@ -87,6 +91,7 @@ public class KroxyliciousExtension implements ParameterResolver, BeforeEachCallb
 
     @Override
     public void beforeEach(ExtensionContext extensionContext) {
+        ResourceManager.setTestContext(extensionContext);
         final String k8sNamespace = Constants.KAFKA_DEFAULT_NAMESPACE + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 6);
         extensionContext.getStore(junitNamespace).put(K8S_NAMESPACE_KEY, k8sNamespace);
         NamespaceUtils.createNamespaceWithWait(k8sNamespace);
