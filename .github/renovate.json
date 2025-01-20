@@ -1,4 +1,5 @@
 {
+  "repositories": ["franvila/kproxy"],
   "baseBranches": ["main"],
   "rebaseWhen": "conflicted",
   "labels": ["dependencies"],
@@ -66,7 +67,8 @@
       ],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "localstack/helm-charts",
-      "versioningTemplate": "\"regex:^localstack-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)?$\""
+      "versioningTemplate": "loose",
+      "extractVersion": "^localstack-(?<version>.*)$"
     },
     {
       "customType": "regex",
