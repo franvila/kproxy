@@ -67,8 +67,7 @@
       ],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "localstack/helm-charts",
-      "versioningTemplate": "loose",
-      "extractVersion": "^localstack-(?<version>.*)$"
+      "versioningTemplate": "regex:^localstack-(?<version>.*)$"
     },
     {
       "customType": "regex",
