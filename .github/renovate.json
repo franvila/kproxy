@@ -1,5 +1,4 @@
 {
-  "repositories": ["franvila/kproxy"],
   "baseBranches": ["main"],
   "rebaseWhen": "conflicted",
   "labels": ["dependencies"],
@@ -63,10 +62,11 @@
       "customType": "regex",
       "fileMatch": ["kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Environment.java"],
       "matchStrings": [
-        "AWS_LOCALSTACK_CHART_VERSION_DEFAULT = \"(?<currentValue>localstack-\\d+\\.\\d+\\.\\d+)\""
+        "AWS_LOCALSTACK_CHART_VERSION_DEFAULT = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
       ],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "localstack/helm-charts",
+      "matchUpdateTypes": ["major", "minor", "patch"],
       "versioningTemplate": "regex:^localstack-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
     },
     {
