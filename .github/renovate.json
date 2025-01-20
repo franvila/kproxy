@@ -63,7 +63,7 @@
       "customType": "regex",
       "fileMatch": ["kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Environment.java"],
       "matchStrings": [
-        "AWS_LOCALSTACK_CHART_VERSION_DEFAULT = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
+        "AWS_LOCALSTACK_CHART_VERSION_DEFAULT = \"(?<currentValue>localstack-\\d+\\.\\d+\\.\\d+)\""
       ],
       "datasourceTemplate": "github-tags",
       "depNameTemplate": "localstack/helm-charts",
