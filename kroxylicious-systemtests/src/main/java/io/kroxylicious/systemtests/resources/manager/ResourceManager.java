@@ -24,6 +24,10 @@ import io.skodjob.testframe.resources.ResourceItem;
 import io.strimzi.api.kafka.model.common.Spec;
 import io.strimzi.api.kafka.model.kafka.Status;
 
+import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxy;
+import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxyIngress;
+import io.kroxylicious.kubernetes.api.v1alpha1.KafkaService;
+import io.kroxylicious.kubernetes.api.v1alpha1.VirtualKafkaCluster;
 import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.enums.ConditionStatus;
 import io.kroxylicious.systemtests.k8s.HelmClient;
@@ -34,12 +38,9 @@ import io.kroxylicious.systemtests.resources.ResourceOperation;
 import io.kroxylicious.systemtests.resources.ResourceType;
 import io.kroxylicious.systemtests.resources.kroxylicious.ConfigMapResource;
 import io.kroxylicious.systemtests.resources.kroxylicious.DeploymentResource;
-import io.kroxylicious.systemtests.resources.kroxylicious.KafkaProxyIngressResource;
-import io.kroxylicious.systemtests.resources.kroxylicious.KafkaProxyResource;
-import io.kroxylicious.systemtests.resources.kroxylicious.KafkaServiceResource;
+import io.kroxylicious.systemtests.resources.kroxylicious.KroxyliciousResource;
 import io.kroxylicious.systemtests.resources.kroxylicious.SecretResource;
 import io.kroxylicious.systemtests.resources.kroxylicious.ServiceResource;
-import io.kroxylicious.systemtests.resources.kroxylicious.VirtualKafkaClusterResource;
 import io.kroxylicious.systemtests.resources.kubernetes.ClusterOperatorCustomResourceDefinition;
 import io.kroxylicious.systemtests.resources.strimzi.KafkaNodePoolResource;
 import io.kroxylicious.systemtests.resources.strimzi.KafkaResource;
@@ -112,10 +113,10 @@ public class ResourceManager {
             new DeploymentResource(),
             new SecretResource(),
             new ClusterOperatorCustomResourceDefinition(),
-            new KafkaProxyResource(),
-            new KafkaServiceResource(),
-            new KafkaProxyIngressResource(),
-            new VirtualKafkaClusterResource()
+            new KroxyliciousResource<>(KafkaProxy.class),
+            new KroxyliciousResource<>(KafkaService.class),
+            new KroxyliciousResource<>(KafkaProxyIngress.class),
+            new KroxyliciousResource<>(VirtualKafkaCluster.class)
     };
 
     /**
