@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.fabric8.kubernetes.api.builder.Builder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.CustomResource;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
@@ -137,8 +138,43 @@ public class ResourceManager {
      * @param resources the resources
      */
     @SafeVarargs
+    public final <T extends HasMetadata> void createResourceWithoutWait(Builder<T>... resources) {
+        createResource(false, Arrays.stream(resources).map(Builder::build).toList().toArray(new HasMetadata[0]));
+    }
+
+
+    /**
+     * Create resource with wait.
+     *
+     * @param <T>     the type parameter
+     * @param resources the resources
+     */
+    @SafeVarargs
     public final <T extends HasMetadata> void createResourceWithWait(T... resources) {
         createResource(true, resources);
+    }
+
+    /**
+     * Create resource with wait.
+     *
+     * @param <T>     the type parameter
+     * @param resourceBuilder the resourcesBuilder to construct the resource from
+     */
+    public final <T extends HasMetadata> T createResourceWithWait(Builder<T> resourceBuilder) {
+        T builtResource = resourceBuilder.build();
+        createResource(true, builtResource);
+        return builtResource;
+    }
+
+    /**
+     * Create resource with wait.
+     *
+     * @param <T>     the type parameter
+     * @param resources the resources
+     */
+    @SafeVarargs
+    public final void createResourceFromBuilder(Builder<? extends HasMetadata>... resources) {
+        createResource(true, Arrays.stream(resources).map(Builder::build).toList().toArray(new HasMetadata[0]));
     }
 
     @SafeVarargs

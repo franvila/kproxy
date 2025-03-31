@@ -12,10 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.kroxylicious.kms.service.TestKmsFacade;
-import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxy;
-import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxyIngress;
-import io.kroxylicious.kubernetes.api.v1alpha1.KafkaService;
-import io.kroxylicious.kubernetes.api.v1alpha1.VirtualKafkaCluster;
 import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.Environment;
 import io.kroxylicious.systemtests.k8s.exception.KubeClusterException;
@@ -56,31 +52,26 @@ public class Kroxylicious {
         LOGGER.info("Deploy Kroxylicious config Map with record encryption filter in {} namespace", deploymentNamespace);
         resourceManager
                 .createResourceWithWait(
-                        KroxyliciousConfigMapTemplates.kroxyliciousRecordEncryptionConfig(clusterName, deploymentNamespace, testKmsFacade, experimentalKmsConfig)
-                                .build());
+                        KroxyliciousConfigMapTemplates.kroxyliciousRecordEncryptionConfig(clusterName, deploymentNamespace, testKmsFacade, experimentalKmsConfig));
     }
 
     private void deployPortPerBrokerPlain(int replicas) {
         LOGGER.info("Deploy Kroxylicious in {} namespace", deploymentNamespace);
-        resourceManager.createResourceWithWait(KroxyliciousDeploymentTemplates.defaultKroxyDeployment(deploymentNamespace, containerImage, replicas).build());
-        resourceManager.createResourceWithoutWait(KroxyliciousServiceTemplates.defaultKroxyService(deploymentNamespace).build());
+        resourceManager.createResourceWithWait(KroxyliciousDeploymentTemplates.defaultKroxyDeployment(deploymentNamespace, containerImage, replicas));
+        resourceManager.createResourceWithoutWait(KroxyliciousServiceTemplates.defaultKroxyService(deploymentNamespace));
     }
 
     /**
      * Deploy - Port Identifies Node with no filters config
      */
     public void deployPortIdentifiesNodeWithNoFilters(String clusterName) {
-        KafkaProxy kafkaProxy = KroxyliciousKafkaProxyTemplates.defaultKafkaProxyDeployment(deploymentNamespace, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME).build();
-        KafkaProxyIngress kafkaProxyIngress = KroxyliciousKafkaProxyIngressTemplates.defaultKafkaProxyIngressDeployment(deploymentNamespace, "cluster-ip",
-                kafkaProxy).build();
-        KafkaService kafkaService = KroxyliciousKafkaClusterRefTemplates.defaultKafkaClusterRefDeployment(deploymentNamespace, clusterName).build();
-        VirtualKafkaCluster virtualKafkaCluster = KroxyliciousVirtualKafkaClusterTemplates
-                .defaultVirtualKafkaClusterDeployment(deploymentNamespace, clusterName, kafkaProxy, kafkaService, kafkaProxyIngress).build();
-
-        resourceManager.createResourceWithWait(kafkaProxy);
-        resourceManager.createResourceWithWait(kafkaProxyIngress);
-        resourceManager.createResourceWithWait(kafkaService);
-        resourceManager.createResourceWithWait(virtualKafkaCluster);
+        resourceManager.createResourceFromBuilder(
+                KroxyliciousKafkaProxyTemplates.defaultKafkaProxyDeployment(deploymentNamespace, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME),
+                KroxyliciousKafkaProxyIngressTemplates.defaultKafkaProxyIngressDeployment(deploymentNamespace, "cluster-ip", Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME),
+                KroxyliciousKafkaClusterRefTemplates.defaultKafkaClusterRefDeployment(deploymentNamespace, clusterName),
+                KroxyliciousVirtualKafkaClusterTemplates
+                        .defaultVirtualKafkaClusterDeployment(deploymentNamespace, clusterName, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME, clusterName, "cluster-ip")
+        );
     }
 
     /**
