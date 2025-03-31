@@ -142,7 +142,6 @@ public class ResourceManager {
         createResource(false, Arrays.stream(resources).map(Builder::build).toList().toArray(new HasMetadata[0]));
     }
 
-
     /**
      * Create resource with wait.
      *

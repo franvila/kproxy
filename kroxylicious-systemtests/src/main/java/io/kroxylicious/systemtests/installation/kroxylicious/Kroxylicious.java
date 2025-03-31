@@ -70,8 +70,7 @@ public class Kroxylicious {
                 KroxyliciousKafkaProxyIngressTemplates.defaultKafkaProxyIngressDeployment(deploymentNamespace, "cluster-ip", Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME),
                 KroxyliciousKafkaClusterRefTemplates.defaultKafkaClusterRefDeployment(deploymentNamespace, clusterName),
                 KroxyliciousVirtualKafkaClusterTemplates
-                        .defaultVirtualKafkaClusterDeployment(deploymentNamespace, clusterName, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME, clusterName, "cluster-ip")
-        );
+                        .defaultVirtualKafkaClusterDeployment(deploymentNamespace, clusterName, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME, clusterName, "cluster-ip"));
     }
 
     /**
