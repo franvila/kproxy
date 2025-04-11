@@ -18,7 +18,7 @@ COMMIT_ID=${COMMIT_ID:=$(git rev-parse --short HEAD)}
 
 
 PROFILING_OUTPUT_DIRECTORY=${PROFILING_OUTPUT_DIRECTORY:-"/tmp/perf-test/results"}
-LOGS_OUTPUT_DIRECTORY=${logs_OUTPUT_DIRECTORY:-"${PERF_TESTS_DIR}/tmp/perf-test/logs"}
+LOGS_OUTPUT_DIRECTORY=${LOGS_OUTPUT_DIRECTORY:-"/tmp/perf-test/logs"}
 mkdir -p "${LOGS_OUTPUT_DIRECTORY}"
 
 ON_SHUTDOWN=()
@@ -115,6 +115,7 @@ deleteAsyncProfilerKroxy() {
 dumpBrokerLogs() {
   TESTNAME=$1
   ${CONTAINER_ENGINE} logs broker1 > "${LOGS_OUTPUT_DIRECTORY}/${TESTNAME}_broker.log"
+  ${CONTAINER_ENGINE} logs kroxylicious > "${LOGS_OUTPUT_DIRECTORY}/${TESTNAME}_kroxylicious.log"
 }
 
 startAsyncProfilerKroxy() {
