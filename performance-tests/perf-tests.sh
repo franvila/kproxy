@@ -115,7 +115,7 @@ deleteAsyncProfilerKroxy() {
 dumpBrokerLogs() {
   TESTNAME=$1
   ${CONTAINER_ENGINE} logs broker1 > "${LOGS_OUTPUT_DIRECTORY}/${TESTNAME}_broker.log"
-  if [ ! -z "$KROXYLICIOUS_CONTAINER_ID" ]
+  if [[ ! -z ${KROXYLICIOUS_CONTAINER_ID+x} ]]
   then
     ${CONTAINER_ENGINE} logs kroxylicious > "${LOGS_OUTPUT_DIRECTORY}/${TESTNAME}_kroxylicious.log"
   fi
