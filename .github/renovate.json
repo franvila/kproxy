@@ -57,7 +57,7 @@
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "quay.io/apicurio/apicurio-registry-mem",
-      "autoReplaceStringTemplate": "DockerImageName\\.parse\\(\"{{{depName}}}:{{{newValue}}}"
+      "autoReplaceStringTemplate": "DockerImageName\\.parse\\(\"{{{depName}}}:{{{newValue}}}.Final"
     },
     {
       "customType": "regex",
