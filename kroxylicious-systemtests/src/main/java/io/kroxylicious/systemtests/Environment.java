@@ -103,7 +103,7 @@ public class Environment {
     public static final String AWS_KROXYLICIOUS_ACCESS_KEY_ID_DEFAULT = AWS_ACCESS_KEY_ID_DEFAULT;
     private static final String AWS_KROXYLICIOUS_SECRET_ACCESS_KEY_DEFAULT = AWS_SECRET_ACCESS_KEY_DEFAULT;
     public static final String AWS_REGION_DEFAULT = "us-east-2";
-    private static final String TEST_CLIENTS_IMAGE_BASE_DEFAULT = "quay.io/strimzi-test-clients/test-clients:0.11.0-kafka";
+    private static final String TEST_CLIENTS_IMAGE_BASE_DEFAULT = "quay.io/strimzi-test-clients/test-clients:0.10.0-kafka";
 
     public static final String KAFKA_VERSION = ENVIRONMENT_VARIABLES.getOrDefault(KAFKA_VERSION_ENV, KAFKA_VERSION_DEFAULT);
     public static final String KROXYLICIOUS_OPERATOR_VERSION = ENVIRONMENT_VARIABLES.getOrDefault(KROXYLICIOUS_OPERATOR_VERSION_ENV, KROXYLICIOUS_VERSION_DEFAULT);
