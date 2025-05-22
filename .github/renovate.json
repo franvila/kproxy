@@ -53,7 +53,7 @@
       "customType": "regex",
       "fileMatch": ["kroxylicious-integration-tests/src/test/java/io/kroxylicious/proxy/filter/validation/JsonSchemaRecordValidationIT.java"],
       "matchStrings": [
-        "DockerImageName\\.parse\\(\"(?<depName>quay.io/apicurio/apicurio-registry-mem):(?<currentValue>\\d+\\.\\d+\\.\\d+.Final\")"
+        "DockerImageName\\.parse\\(\"(?<depName>quay.io/apicurio/apicurio-registry-mem):(?<currentValue>\\d+\\.\\d+\\.\\d+.Final)"
       ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "quay.io/apicurio/apicurio-registry-mem",
