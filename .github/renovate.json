@@ -57,7 +57,7 @@
       ],
       "datasourceTemplate": "docker",
       "extractVersionTemplate": "^(?<version>.*)\\.Final$",
-      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.Final$"
+      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)?(\\.(?<build>.*))?$"
     },
     {
       "customType": "regex",
