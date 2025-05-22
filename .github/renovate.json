@@ -71,6 +71,14 @@
     },
     {
       "customType": "regex",
+      "fileMatch": ["kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Environment.java"],
+      "matchStrings": [
+        "(?<depName>quay.io/strimzi-test-clients/test-clients):(?<currentValue>\\d+\\.\\d+\\.\\d+)-kafka.*"
+      ],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
       "fileMatch": [".github/workflows/maven.yaml",
                     ".github/workflows/sonar.yaml"],
       "matchStrings": [
