@@ -51,6 +51,8 @@ public class Environment {
     private static final String AWS_KROXYLICIOUS_ACCESS_KEY_ID_ENV = "AWS_KROXYLICIOUS_ACCESS_KEY_ID";
     private static final String AWS_KROXYLICIOUS_SECRET_ACCESS_KEY_ENV = "AWS_KROXYLICIOUS_SECRET_ACCESS_KEY";
     private static final String AWS_REGION_ENV = "AWS_REGION";
+    private static final String TEST_CLIENTS_IMAGE_BASE_ENV = "TEST_CLIENTS_IMAGE_BASE";
+    private static final String ARCHITECTURE_ENV = "ARCHITECTURE";
 
     /**
      * The kafka version default value
@@ -101,9 +103,12 @@ public class Environment {
     public static final String AWS_KROXYLICIOUS_ACCESS_KEY_ID_DEFAULT = AWS_ACCESS_KEY_ID_DEFAULT;
     private static final String AWS_KROXYLICIOUS_SECRET_ACCESS_KEY_DEFAULT = AWS_SECRET_ACCESS_KEY_DEFAULT;
     public static final String AWS_REGION_DEFAULT = "us-east-2";
+    private static final String TEST_CLIENTS_IMAGE_BASE_DEFAULT = "quay.io/strimzi-test-clients/test-clients:0.11.0-kafka";
 
     public static final String KAFKA_VERSION = ENVIRONMENT_VARIABLES.getOrDefault(KAFKA_VERSION_ENV, KAFKA_VERSION_DEFAULT);
     public static final String KROXYLICIOUS_OPERATOR_VERSION = ENVIRONMENT_VARIABLES.getOrDefault(KROXYLICIOUS_OPERATOR_VERSION_ENV, KROXYLICIOUS_VERSION_DEFAULT);
+    public static final String TEST_CLIENTS_IMAGE_BASE = ENVIRONMENT_VARIABLES.getOrDefault(TEST_CLIENTS_IMAGE_BASE_ENV, TEST_CLIENTS_IMAGE_BASE_DEFAULT);
+    public static final String ARCHITECTURE = ENVIRONMENT_VARIABLES.getOrDefault(ARCHITECTURE_ENV, "");
 
     /**
      * SKIP_TEARDOWN env variable assignment.
