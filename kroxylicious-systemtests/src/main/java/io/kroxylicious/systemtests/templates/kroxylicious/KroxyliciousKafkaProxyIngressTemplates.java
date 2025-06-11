@@ -67,4 +67,31 @@ public class KroxyliciousKafkaProxyIngressTemplates {
                 .endSpec();
         // @formatter:on
     }
+
+    /**
+     * Load balancer ingress.
+     *
+     * @param namespaceName the namespace name
+     * @param ingressName the ingress name
+     * @param proxyName the proxy name
+     * @return the kafka proxy ingress builder
+     */
+    public static KafkaProxyIngressBuilder loadBalancerIngressCR(String namespaceName, String ingressName, String proxyName) {
+        // @formatter:off
+        return new KafkaProxyIngressBuilder()
+                .withNewMetadata()
+                    .withName(ingressName)
+                    .withNamespace(namespaceName)
+                .endMetadata()
+                .withNewSpec()
+                    .withNewLoadBalancer()
+                        .withBootstrapAddress("$(virtualClusterName).kafkaproxy")
+                        .withAdvertisedBrokerAddressPattern("$(virtualClusterName)-$(nodeId).kafkaproxy")
+                    .endLoadBalancer()
+                    .withNewProxyRef()
+                        .withName(proxyName)
+                    .endProxyRef()
+                .endSpec();
+        // @formatter:on
+    }
 }

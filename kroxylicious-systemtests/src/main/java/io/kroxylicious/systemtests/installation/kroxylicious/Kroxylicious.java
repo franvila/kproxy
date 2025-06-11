@@ -81,6 +81,7 @@ public class Kroxylicious {
 
     /**
      * Deploy - Port Identifies Node with no filters config
+     * @param clusterName the cluster name
      */
     public void deployPortIdentifiesNodeWithNoFilters(String clusterName) {
         resourceManager.createResourceFromBuilder(
@@ -108,6 +109,12 @@ public class Kroxylicious {
                         clusterName, Constants.KROXYLICIOUS_INGRESS_CLUSTER_IP));
     }
 
+    /**
+     * Deploy port identifies node with downstream tls and no filters.
+     *
+     * @param clusterName the cluster name
+     * @param tls the tls
+     */
     public void deployPortIdentifiesNodeWithDownstreamTlsAndNoFilters(String clusterName, Tls tls) {
         resourceManager.createResourceFromBuilder(
                 KroxyliciousKafkaProxyTemplates.defaultKafkaProxyCR(deploymentNamespace, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME),
@@ -119,6 +126,28 @@ public class Kroxylicious {
                         clusterName, Constants.KROXYLICIOUS_INGRESS_CLUSTER_IP, tls));
     }
 
+    /**
+     * Deploy load balancer ingress and no filters.
+     *
+     * @param clusterName the cluster name
+     */
+    public void deployLoadBalancerIngressWithDownstreamTlsAndNoFilters(String clusterName, Tls tls) {
+        createCertificateConfigMapFromListener(deploymentNamespace);
+        resourceManager.createResourceFromBuilder(
+                KroxyliciousKafkaProxyTemplates.defaultKafkaProxyCR(deploymentNamespace, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME),
+                KroxyliciousKafkaProxyIngressTemplates.loadBalancerIngressCR(deploymentNamespace, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER,
+                        Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME),
+                KroxyliciousKafkaClusterRefTemplates.defaultKafkaClusterRefCR(deploymentNamespace, clusterName),
+                KroxyliciousVirtualKafkaClusterTemplates.defaultVirtualKafkaClusterWithTlsCR(deploymentNamespace, clusterName, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME,
+                        clusterName, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER, tls));
+    }
+
+    /**
+     * Create certificate config map from listener tls.
+     *
+     * @param namespace the namespace
+     * @return the tls
+     */
     public Tls createCertificateConfigMapFromListener(String namespace) {
         // wait for listeners to contain data
         var tlsListenerStatus = KafkaUtils.getKafkaListenerStatus("tls");
@@ -142,14 +171,20 @@ public class Kroxylicious {
         // formatter:off
         return new TrustAnchorRefBuilder()
                 .withNewRef()
-                .withName(Constants.KROXYLICIOUS_TLS_CLIENT_CA_CERT)
-                .withKind(Constants.CONFIG_MAP)
+                    .withName(Constants.KROXYLICIOUS_TLS_CLIENT_CA_CERT)
+                    .withKind(Constants.CONFIG_MAP)
                 .endRef()
                 .withKey(Constants.KROXYLICIOUS_TLS_CA_NAME)
                 .build();
         // formatter:on
     }
 
+    /**
+     * Tls config from cert tls.
+     *
+     * @param certNane the cert nane
+     * @return the tls
+     */
     public Tls tlsConfigFromCert(String certNane) {
         TlsBuilder tlsBuilder = new TlsBuilder();
         if (certNane != null) {

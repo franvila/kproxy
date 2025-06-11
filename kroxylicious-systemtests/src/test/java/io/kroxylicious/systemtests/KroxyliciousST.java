@@ -6,6 +6,7 @@
 
 package io.kroxylicious.systemtests;
 
+import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
 
@@ -20,6 +21,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 
 import io.kroxylicious.systemtests.clients.records.ConsumerRecord;
+import io.kroxylicious.systemtests.installation.kroxylicious.CertManager;
 import io.kroxylicious.systemtests.installation.kroxylicious.Kroxylicious;
 import io.kroxylicious.systemtests.installation.kroxylicious.KroxyliciousOperator;
 import io.kroxylicious.systemtests.steps.KafkaSteps;
@@ -70,6 +72,27 @@ class KroxyliciousST extends AbstractST {
         kroxylicious.deployPortIdentifiesNodeWithTlsAndNoFilters(clusterName);
 
         produceAndConsumeMessage(namespace);
+    }
+
+    @Test
+    void produceAndConsumeMessagesWithLoadBalancerIngress(String namespace) throws IOException {
+        CertManager certManager = new CertManager();
+        certManager.deploy();
+
+        var issuer = certManager.issuer(namespace);
+        var cert = certManager.certFor(namespace, clusterName + ".kafkaproxy", clusterName + ".kafkaproxy",
+                clusterName + "-0.kafkaproxy", clusterName + "-1.kafkaproxy", clusterName + "-2.kafkaproxy");
+
+        resourceManager.createOrUpdateResourceWithWait(issuer, cert);
+
+        kroxylicious = new Kroxylicious(namespace);
+        var tls = kroxylicious.tlsConfigFromCert("server-certificate");
+        // start Kroxylicious
+        LOGGER.atInfo().setMessage("Given Kroxylicious in {} namespace with {} replicas").addArgument(namespace).addArgument(1).log();
+        kroxylicious.deployLoadBalancerIngressWithDownstreamTlsAndNoFilters(clusterName, tls);
+
+        produceAndConsumeMessage(namespace);
+        certManager.delete();
     }
 
     private void produceAndConsumeMessage(String namespace) {

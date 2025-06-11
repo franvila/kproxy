@@ -9,6 +9,7 @@ package io.kroxylicious.systemtests.templates.kroxylicious;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerStatus;
 
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaServiceBuilder;
+import io.kroxylicious.kubernetes.api.v1alpha1.kafkaservicespec.NodeIdRangesBuilder;
 import io.kroxylicious.kubernetes.api.v1alpha1.kafkaservicespec.Tls;
 import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.utils.KafkaUtils;
@@ -34,6 +35,10 @@ public class KroxyliciousKafkaClusterRefTemplates {
                 .endMetadata()
                 .withNewSpec()
                     .withBootstrapServers(getKafkaBootstrap("plain", clusterRefName))
+                    .withNodeIdRanges(new NodeIdRangesBuilder()
+                            .withStart(0L)
+                            .withEnd(2L)
+                            .build())
                 .endSpec();
         // @formatter:on
     }
