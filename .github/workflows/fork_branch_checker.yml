@@ -12,6 +12,7 @@ jobs:
         id: build_configuration
         run: |
           echo "REF_NAME: ${{github.ref_name}}"
+          echo "BRANCH_NAME: ${{github.head_ref}}"
           echo "REPO: ${{github.event.pull_request.head.repo.full_name}}"
           echo "BASE_REF: ${{github.event.pull_request.base.ref}}"
       - name: Check fork branch
