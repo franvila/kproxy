@@ -1,0 +1,18 @@
+name: Fork branch checker
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check fork branch
+        if: github.event.pull_request.head.repo.full_name != github.repository && github.ref_name == 'main'
+        uses: actions/github-script@v3
+        with:
+          script: |
+            core.setFailed('Your branch is main and it should be different')
