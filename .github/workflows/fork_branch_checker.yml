@@ -1,8 +1,6 @@
 name: Fork branch checker
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     types: [ opened, synchronize, reopened ]
 
