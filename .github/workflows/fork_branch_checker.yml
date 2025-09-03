@@ -8,17 +8,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Determine Build Configuration
-        id: build_configuration
+      - name: Echo Branch Configuration
+        id: branch_configuration
         run: |
-          echo "REF_NAME: ${{github.ref_name}}"
           echo "BRANCH_NAME: ${{github.head_ref}}"
           echo "REPO: ${{github.event.pull_request.head.repo.full_name}}"
           echo "BASE_REF: ${{github.event.pull_request.base.ref}}"
       - name: Check fork branch
-#        if: github.event.pull_request.head.repo.full_name != github.repository && github.head_ref != 'main'
-        if: github.head_ref != 'main'
+        if: github.event.pull_request.head.repo.full_name != github.repository && github.head_ref == 'main'
         uses: actions/github-script@v3
         with:
           script: |
-            core.setFailed('Your branch is main and it should be different')
+            core.setFailed('main branch should not be used in pull requests from a fork"')
