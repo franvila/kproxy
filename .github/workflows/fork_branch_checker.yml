@@ -1,7 +1,7 @@
 name: Fork branch checker
 
 on:
-  pull_request:
+  pull_request_target:
     types: [ opened, synchronize, reopened ]
 
 jobs:
@@ -14,7 +14,7 @@ jobs:
           echo "${{github.ref_name}}"
           echo "${{github.event.pull_request.head.repo.full_name}}"
       - name: Check fork branch
-        if: github.event.pull_request.head.repo.full_name != github.repository && github.ref_name != 'main'
+        if: github.event.pull_request.head.repo.full_name != github.repository && github.ref_name == 'main'
         uses: actions/github-script@v3
         with:
           script: |
