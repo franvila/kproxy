@@ -16,7 +16,7 @@ jobs:
           echo "REPO: ${{github.event.pull_request.head.repo.full_name}}"
           echo "BASE_REF: ${{github.event.pull_request.base.ref}}"
       - name: Check fork branch
-        if: github.event.pull_request.head.repo.full_name != github.repository && github.ref_name == 'main'
+        if: github.event.pull_request.head.repo.full_name != github.repository && github.head_ref == 'main'
         uses: actions/github-script@v3
         with:
           script: |
