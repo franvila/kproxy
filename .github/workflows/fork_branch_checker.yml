@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check fork branch
-        if: github.event.pull_request.head.repo.full_name != github.repository && github.ref_name == 'main'
+        if: github.event.pull_request.head.repo.full_name != github.repository && github.ref_name != 'main'
         uses: actions/github-script@v3
         with:
           script: |
