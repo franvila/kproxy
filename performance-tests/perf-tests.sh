@@ -8,7 +8,7 @@
 set -eo pipefail
 PERF_TESTS_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-AP_LOADER_JAR_VERSION=4.1-10
+AP_LOADER_JAR_VERSION=4.0-10
 TEST=${TEST:-'[0-9][0-9]-.*'}
 RECORD_SIZE=${RECORD_SIZE:-1024}
 NUM_RECORDS=${NUM_RECORDS:-10000000}
