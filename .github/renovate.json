@@ -96,7 +96,7 @@
         "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<verCompatibility>\\d+\\.\\d+\\.\\d+)-(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
       "datasourceTemplate": "docker",
-      "extractVersionTemplate": "^{{verCompatibility}}(?<version>.*)?$"
+      "extractVersionTemplate": "^{{verCompatibility}}-(?<version>.*)?$"
     },
     {
       "customType": "regex",
