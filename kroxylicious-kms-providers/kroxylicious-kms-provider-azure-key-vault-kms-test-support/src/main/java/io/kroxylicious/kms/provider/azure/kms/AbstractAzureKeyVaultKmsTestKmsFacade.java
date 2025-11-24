@@ -62,10 +62,14 @@ public abstract class AbstractAzureKeyVaultKmsTestKmsFacade implements TestKmsFa
     public static class AzureKmsTestKekManager implements TestKekManager {
         KeyClient keyClient;
 
-        public AzureKmsTestKekManager(String endpointAuthority, String defaultVaultAuthority, String vaultBaseUrl) {
-            keyClient = new KeyClientBuilder().credential(new BasicAuthenticationCredential("abc", "def"))
+        public AzureKmsTestKekManager(String endpointAuthority, String defaultVaultAuthority, String vaultBaseUrl, String clientId, String clientSecret) {
+            keyClient = new KeyClientBuilder().credential(new BasicAuthenticationCredential(clientId, clientSecret))
                     .httpClient(createHttpClient(endpointAuthority, defaultVaultAuthority)).vaultUrl(vaultBaseUrl)
                     .disableChallengeResourceVerification().buildClient();
+        }
+
+        public AzureKmsTestKekManager(String endpointAuthority, String defaultVaultAuthority, String vaultBaseUrl) {
+            this(endpointAuthority, defaultVaultAuthority, vaultBaseUrl, "abc", "def");
         }
 
         @Override

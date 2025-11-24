@@ -62,6 +62,9 @@ public class Environment {
     private static final String ARCHITECTURE_ENV = "ARCHITECTURE";
     private static final String KROXYLICIOUS_OPERATOR_INSTALL_DIR_ENV = "KROXYLICIOUS_OPERATOR_INSTALL_DIR";
     private static final String CURL_IMAGE_ENV = "CURL_IMAGE";
+    private static final String AZURE_KMS_TENANT_ID_ENV = "AZURE_KMS_TENANT_ID";
+    private static final String AZURE_KMS_CLIENT_ID_ENV = "AZURE_KMS_CLIENT_ID";
+    private static final String AZURE_KMS_CLIENT_SECRET_ENV = "AZURE_KMS_CLIENT_SECRET";
 
     /**
      * The kafka version default value
@@ -113,6 +116,7 @@ public class Environment {
     private static final String ARCHITECTURE_DEFAULT = System.getProperty("os.arch");
     private static final String KROXYLICIOUS_OPERATOR_INSTALL_DIR_DEFAULT = System.getProperty("user.dir") + "/target/kroxylicious-operator-dist/install/";
     public static final String CURL_IMAGE_DEFAULT = Constants.DOCKER_REGISTRY_GCR_MIRROR + "/curlimages/curl:8.17.0";
+    private static final String AZURE_KMS_TENANT_ID_DEFAULT = "1699675e-9716-4bd9-876a-b780e6e11f57";
 
     public static final String KAFKA_VERSION = ENVIRONMENT_VARIABLES.getOrDefault(KAFKA_VERSION_ENV, KAFKA_VERSION_DEFAULT);
     public static final String KROXYLICIOUS_OPERATOR_VERSION = ENVIRONMENT_VARIABLES.getOrDefault(KROXYLICIOUS_OPERATOR_VERSION_ENV, KROXYLICIOUS_VERSION_DEFAULT);
@@ -175,6 +179,9 @@ public class Environment {
     public static final String KROXYLICIOUS_OPERATOR_INSTALL_DIR = ENVIRONMENT_VARIABLES.getOrDefault(KROXYLICIOUS_OPERATOR_INSTALL_DIR_ENV,
             KROXYLICIOUS_OPERATOR_INSTALL_DIR_DEFAULT);
     public static final String CURL_IMAGE = ENVIRONMENT_VARIABLES.getOrDefault(CURL_IMAGE_ENV, CURL_IMAGE_DEFAULT);
+    public static final String AZURE_KMS_TENANT_ID = ENVIRONMENT_VARIABLES.getOrDefault(AZURE_KMS_TENANT_ID_ENV, AZURE_KMS_TENANT_ID_DEFAULT);
+    public static final String AZURE_KMS_CLIENT_ID = ENVIRONMENT_VARIABLES.getOrDefault(AZURE_KMS_CLIENT_ID_ENV, "");
+    public static final String AZURE_KMS_CLIENT_SECRET = ENVIRONMENT_VARIABLES.getOrDefault(AZURE_KMS_CLIENT_SECRET_ENV, "");
 
     private static String readMetadataProperty(String property) {
         var p = new Properties();
