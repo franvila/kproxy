@@ -136,7 +136,7 @@
         ".github/workflows/*.yaml"
       ],
       "matchStrings": [
-        "minikube version: '(?<currentValue>\\d+\\.\\d+\\.\\d+\\.\\d+)'"
+        "minikube version: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'"
       ],
       "depNameTemplate": "kubernetes/minikube",
       "datasourceTemplate": "github-releases"
@@ -147,7 +147,7 @@
         ".github/workflows/*.yaml"
       ],
       "matchStrings": [
-        "kubernetes version: '(?<currentValue>\\d+\\.\\d+\\.\\d+\\.\\d+)'"
+        "kubernetes version: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'"
       ],
       "depNameTemplate": "kubernetes/kubernetes",
       "datasourceTemplate": "github-releases"
