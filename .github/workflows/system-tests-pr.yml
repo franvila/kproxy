@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build_operator:
+  run_tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -67,12 +67,25 @@ jobs:
           # https://github.com/kubernetes/minikube/issues/21393 - minikube image load doesn't fail if the load fails.
           KROXYLICIOUS_PROXY_IMAGE="$(mvn --quiet --projects kroxylicious-app --activate-profiles dist org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=io.kroxylicious.proxy.image.name -DforceStdout)"
           KROXYLICIOUS_OPERATOR_IMAGE="$(mvn --quiet --projects kroxylicious-operator --activate-profiles dist org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=io.kroxylicious.operator.image.name -DforceStdout)"
+          KROXYLICIOUS_VERSION="$(mvn --quiet org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)"
+          minikube image tag ${KROXYLICIOUS_PROXY_IMAGE} quay.io/kroxylicious/kroxylicious:${KROXYLICIOUS_VERSION}          
           minikube image ls | grep --fixed-strings ${KROXYLICIOUS_PROXY_IMAGE}
           minikube image ls | grep --fixed-strings ${KROXYLICIOUS_OPERATOR_IMAGE}
-
-          KROXYLICIOUS_VERSION="$(mvn --quiet org.apache.maven.plugins:maven-help-plugin:3.5.1:evaluate -Dexpression=project.version -DforceStdout)"
-          minikube image tag ${KROXYLICIOUS_PROXY_IMAGE} quay.io/kroxylicious/kroxylicious:${KROXYLICIOUS_VERSION}
 
       - name: 'Run system tests'
         run: |
           mvn --quiet --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true
+
+      - name: Archive JUnit test results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: junit-results
+          path: kroxylicious-systemtests/target/failsafe-reports/**/TEST-*.xml
+
+      - name: Archive systemtest logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: systemtest-logs
+          path: kroxylicious-systemtests/target/logs
