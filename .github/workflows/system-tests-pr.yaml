@@ -113,7 +113,7 @@ jobs:
       - name: 'Run system tests'
         timeout-minutes: 120
         run: |          
-          mvn --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true -Dtest="${{ matrix.tests }}" -Dgroups=${{ github.event_name == 'pull_request' && 'regression' || github.event.inputs.groups }}
+          mvn --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true -Dtest="${{ matrix.tests }}"
 
       - name: Archive JUnit test results
         if: ${{ always() }}
