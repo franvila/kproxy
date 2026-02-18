@@ -31,12 +31,14 @@ on:
     branches:
       - "main"
       - 'release/**'
-  workflow_dispatch:
+  workflow_dispatch: 
+  workflow_call:
     inputs:
       kafkaClient:
         description: "Kafka client to be used"
         default: "strimzi_test_client"
         required: false
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -103,8 +105,8 @@ jobs:
       - name: 'Run system tests'
         timeout-minutes: 90
         env:
-          KAFKA_CLIENT: ${{ 'strimzi_test_client' || inputs.kafkaClient }}
-        run: |          
+          KAFKA_CLIENT=${{ 'strimzi_test_client' || inputs.kafkaClient }}
+        run: |
           mvn --quiet --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true -Dtest="${{ matrix.tests }}"
 
       - name: Archive JUnit test results
