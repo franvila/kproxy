@@ -24,11 +24,27 @@ on:
         default: "strimzi_test_client"
         required: false
         type: string
+      groups:
+        description: "Groups to be included in test run"
+        required: false
+        type: string
+      excludedGroups:
+        description: "Groups to be excluded from test run"
+        required: false
+        type: string
   workflow_call:
     inputs:
       kafkaClient:
         description: "Kafka client to be used"
         default: "strimzi_test_client"
+        required: false
+        type: string
+      groups:
+        description: "Groups to be included in test run"
+        required: false
+        type: string
+      excludedGroups:
+        description: "Groups to be excluded from test run"
         required: false
         type: string
 
@@ -94,8 +110,11 @@ jobs:
         timeout-minutes: 90
         env:
           KAFKA_CLIENT: ${{ inputs.kafkaClient }}
+          GROUPS_OPT: ${{ inputs.groups != '' && format('-Dgroups={0}', inputs.groups) || '' }}
+          TESTS_OPT: ${{ matrix.tests != '' && format('-Dtest={0}',  matrix.tests)  || '' }}
+          EXCLUDED_GROUPS_OPT: ${{ inputs.excludedGroups != '' && format('-Dgroups={0}', inputs.excludedGroups) || '' }}
         run: |
-          mvn --quiet --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true -Dtest="${{ matrix.tests }}"
+          mvn --quiet --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true $EXCLUDED_GROUPS_OPT $GROUPS_OPT $TESTS_OPT
 
       - name: Archive JUnit test results
         if: ${{ always() }}
