@@ -37,7 +37,7 @@ jobs:
         id: discover
         run: |
           TEST_CLIENTS="['strimzi_test_client', 'python_test_client', 'kaf', 'kcat']"
-          echo "test_client=$TEST_CLIENTS" >> $GITHUB_OUTPUT
+          echo "test_clients=$TEST_CLIENTS" >> $GITHUB_OUTPUT
 
   run_system_tests:
     needs: discover_system_test_clients
