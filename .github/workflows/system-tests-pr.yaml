@@ -102,9 +102,8 @@ jobs:
 
       - name: 'Run system tests'
         timeout-minutes: 90
-        with:
-          env:
-            KAFKA_CLIENT=${{ 'strimzi_test_client' || inputs.kafkaClient }}
+        env:
+          KAFKA_CLIENT: ${{ 'strimzi_test_client' || inputs.kafkaClient }}
         run: |          
           mvn --quiet --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true -Dtest="${{ matrix.tests }}"
 
