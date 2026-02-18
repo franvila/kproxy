@@ -33,6 +33,10 @@ on:
   workflow_dispatch:
 
 jobs:
+  run_external_kafka_client_system_tests:
+    uses: ./.github/workflows/run-system-tests.yml
+    with:
+      groups: 'externalKafkaClient,operator'
   discover_system_test_clients:
     runs-on: ubuntu-latest
     outputs:
@@ -54,6 +58,7 @@ jobs:
     uses: ./.github/workflows/run-system-tests.yml
     with:
       kafkaClient: ${{ matrix.tests }}
+      excludedGroups: 'externalKafkaClient,operator'
     strategy:
       fail-fast: false
       matrix:
