@@ -58,8 +58,10 @@ jobs:
           path: kroxylicious
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}
 
+      # - name: Setup Java
+      #   uses: kroxylicious/kroxylicious/.github/actions/common/setup-java@main        
       - name: Setup Java
-        uses: kroxylicious/kroxylicious/.github/actions/common/setup-java@main        
+        uses: ./kroxylicious/.github/actions/common/setup-java   
       
       - name: Build and install BOM
         run: mvn clean install -pl :kroxylicious-bom
