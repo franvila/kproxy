@@ -112,7 +112,7 @@ jobs:
           KAFKA_CLIENT: ${{ inputs.kafkaClient }}
           GROUPS_OPT: ${{ inputs.groups != '' && format('-Dgroups={0}', inputs.groups) || '' }}
           TESTS_OPT: ${{ matrix.tests != '' && format('-Dtest={0}',  matrix.tests)  || '' }}
-          EXCLUDED_GROUPS_OPT: ${{ inputs.excludedGroups != '' && format('-Dgroups={0}', inputs.excludedGroups) || '' }}
+          EXCLUDED_GROUPS_OPT: ${{ inputs.excludedGroups != '' && format('-DexcludedGroups={0}', inputs.excludedGroups) || '' }}
         run: |
           mvn --quiet --batch-mode verify --activate-profiles systemtest -Pdist -DskipDocs=true $EXCLUDED_GROUPS_OPT $GROUPS_OPT $TESTS_OPT
 
