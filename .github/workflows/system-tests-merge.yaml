@@ -50,14 +50,14 @@ jobs:
     steps:
       - name: Log tests to run
         run: echo "Running tests on kafka client '${{ matrix.tests }}'"
+      - name: 'Check out repository'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Run tests
         uses: ./.github/workflows/system-tests-pr.yaml
         with:
           kafkaClient: ${{ matrix.tests }}
-#      - name: 'Check out repository'
-#        uses: actions/checkout@v6
-#        with:
-#          fetch-depth: 0
 #      - name: Set up QEMU
 #        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
 #      - name: Setup Java
