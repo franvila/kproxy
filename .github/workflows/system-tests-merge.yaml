@@ -41,23 +41,14 @@ jobs:
 
   run_system_tests:
     needs: discover_system_test_clients
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/system-tests-pr.yaml
+    with:
+      kafkaClient: ${{ matrix.tests }}
     strategy:
       fail-fast: false
       matrix:
         tests: ${{ fromJson(needs.discover_system_test_clients.outputs.test_clients) }}
-
-    steps:
-      - name: Log tests to run
-        run: echo "Running tests on kafka client '${{ matrix.tests }}'"
-      - name: 'Check out repository'
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Run tests
-        uses: ./.github/workflows/system-tests-pr.yaml
-        with:
-          kafkaClient: ${{ matrix.tests }}
+        
 #      - name: Set up QEMU
 #        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
 #      - name: Setup Java
