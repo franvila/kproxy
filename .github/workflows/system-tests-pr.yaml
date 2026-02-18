@@ -56,7 +56,7 @@ jobs:
 
   run_system_tests:
     needs: discover_system_test_chunks
-    uses: ./.github/workflows/run-system-tests.yaml
+    uses: ./.github/workflows/run-system-tests.yml
     with:
       kafkaClient: 'strimzi_test_client'
     strategy:
