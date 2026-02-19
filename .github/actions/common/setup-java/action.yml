@@ -35,3 +35,4 @@ runs:
       with:
         distribution: ${{ inputs.javaDistro }}
         java-version: ${{ inputs.javaVersion }}
+        cache: maven
