@@ -31,7 +31,7 @@ jobs:
         env:
           KROXYLICIOUS_SLACK_WEBHOOK: ${{ secrets.KROXYLICIOUS_SLACK_WEBHOOK }}
         run: |
-          echo "SLACK_WEBHOOK_SET=$(test '${KROXYLICIOUS_SLACK_WEBHOOK}' && echo 'true')" >> $GITHUB_ENV
+          echo "SLACK_WEBHOOK_SET=$(test \"${KROXYLICIOUS_SLACK_WEBHOOK}\" && echo \"true\")" >> $GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v6
