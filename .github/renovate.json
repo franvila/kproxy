@@ -136,7 +136,7 @@
         "/kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Constants.java/"
       ],
       "matchStrings": [
-        "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+-\\d+\\.\\d+\\.\\d+)"
+        "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+)-(?<verCompatibility>\\d+\\.\\d+\\.\\d+)"
       ],
       "datasourceTemplate": "docker"
     },
