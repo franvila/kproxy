@@ -39,6 +39,12 @@
         "/localstack/"
       ],
       "groupName": "localstack packages"
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["python-kafka-test-client"],
+      "versionCompatibility": "^(?<version>[^-]+)(?<compatibility>-.*)?$",
+      "versioning": "semver"
     }
   ],
   "enabledManagers": [
@@ -132,8 +138,7 @@
       "matchStrings": [
         "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+-\\d+\\.\\d+\\.\\d+)"
       ],
-      "datasourceTemplate": "docker",
-      "versionCompatibility": "^(?<version>[^-]+)(?<compatibility>-.*)?$"
+      "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
