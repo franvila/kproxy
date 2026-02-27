@@ -42,18 +42,10 @@
       "groupName": "localstack packages"
     },
     {
-      "matchPackageNames": ["/python-kafka-test-client/"],
-      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<compatibility>.*)?$"
-    },
-    {
-      "description": "Ensure any digest-pinned, GitHub-sourced, dependencies creates a link to the diff between the two commits",
-      "matchSourceUrls": [
-        "https://github.com/**/*"
+      "matchPackageNames": [
+        "/python-kafka-test-client/"
       ],
-      "matchUpdateTypes": [
-        "digest"
-      ],
-      "changelogUrl": "{{sourceUrl}}/compare/{{currentDigest}}..{{newDigest}}"
+      "versioning": "regex:^(?<version>\\d+\\.\\d+\\.\\d+)-(?<compatibility>.*)?$"
     }
   ],
   "enabledManagers": [
@@ -157,7 +149,7 @@
       "matchStrings": [
         "(?<depName>quay.io/kroxylicious/kcat):(?<currentValue>\\d+\\.\\d+\\.\\d+)",
         "(?<depName>quay.io/kroxylicious/kaf):(?<currentValue>\\d+\\.\\d+\\.\\d+)",
-        "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+)-(?<varCompatibility>\\d+\\.\\d+\\.\\d+)"
+        "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+)-(?<verCompatibility>\\d+\\.\\d+\\.\\d+)"
       ],
       "datasourceTemplate": "docker"
     },
