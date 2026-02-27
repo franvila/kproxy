@@ -137,9 +137,10 @@
         "/kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Constants.java/"
       ],
       "matchStrings": [
-        "(?<depName>quay.io/kroxylicious/python-kafka-test-client)@(?<digest>.*)"
+        "(?<depName>quay.io/kroxylicious/python-kafka-test-client)@(?<currentDigest>.*)"
       ],
-      "datasourceTemplate": "docker"
+      "datasourceTemplate": "docker",
+      "autoReplaceStringTemplate": "{{{depName}}}@{{{newDigest}}}"
     },
     {
       "customType": "regex",
