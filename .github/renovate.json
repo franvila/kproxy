@@ -40,12 +40,6 @@
         "/localstack/"
       ],
       "groupName": "localstack packages"
-    },
-    {
-      "matchPackageNames": [
-        "/python-kafka-test-client/"
-      ],
-      "versioning": "regex:^(?<version>\\d+\\.\\d+\\.\\d+)-(?<compatibility>.*)?$"
     }
   ],
   "enabledManagers": [
