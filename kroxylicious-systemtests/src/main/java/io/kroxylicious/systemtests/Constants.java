@@ -121,7 +121,7 @@ public final class Constants {
      */
     public static final String KCAT_CLIENT_IMAGE = "quay.io/kroxylicious/kcat:1.7.1";
     public static final String PYTHON_CLIENT_IMAGE = "quay.io/kroxylicious/python-kafka-test-client:0.1.2-2.12.1@sha256:e1333acecfa8a101fec8dc6790341d7910a88784509909ff9eb1836058f62f8a";
-    public static final String KAF_CLIENT_IMAGE = "quay.io/kroxylicious/kaf:v0.2.7@sha256:946a0359158311d5efdb685efa2fa859dfbfae9cb9b633dd122fcbab0c3d6ddf";
+    public static final String KAF_CLIENT_IMAGE = "quay.io/kroxylicious/kaf:v0.2.7";
 
     /**
      * the kubernetes labels used to identify the test kafka clients pods
