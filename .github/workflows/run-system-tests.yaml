@@ -72,6 +72,9 @@ jobs:
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
       - name: Setup Java
         uses: ./.github/actions/common/setup-java
+      - name: Set up helm
+        uses: azure/setup-helm@v4.3.0
+        id: install
       - name: Setup Minikube
         uses: ./.github/actions/common/setup-minikube
       - name: 'Set up Docker Buildx'
