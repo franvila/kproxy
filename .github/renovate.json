@@ -145,7 +145,7 @@
         "/kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Constants.java/"
       ],
       "matchStrings": [
-        "(?<depName>quay.io/kroxylicious/python-kafka-test-client)"
+        "(?<depName>quay.io/kroxylicious/python-kafka-test-client)@(?<digest>.*)"
       ],
       "datasourceTemplate": "docker"
     },
