@@ -143,7 +143,7 @@
         "(?<depName>quay.io/kroxylicious/python-kafka-test-client)"
       ],
       "datasourceTemplate": "docker",
-      "extractVersionTemplate": "{{depName}}{{#if newDigest}}@{{newDigest}}{{/if}}"
+      "versioningTemplate": "{{depName}}{{#if newDigest}}@{{newDigest}}{{/if}}"
     },
     {
       "customType": "regex",
