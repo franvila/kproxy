@@ -132,7 +132,7 @@
       "matchStrings": [
         "(?<depName>quay.io/kroxylicious/kcat):(?<currentValue>\\d+\\.\\d+\\.\\d+)",
         "(?<depName>quay.io/kroxylicious/kaf):(?<currentValue>\\d+\\.\\d+\\.\\d+)",
-        "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+-\\d+\\.\\d+\\.\\d+)"
+        "(?<depName>quay.io/kroxylicious/python-kafka-test-client)"
       ],
       "datasourceTemplate": "docker"
     },
