@@ -13,6 +13,7 @@
   "ignoreTests": true,
   "extends": [
     "config:best-practices",
+    "docker:enableMajor",
     ":gitSignOff"
   ],
   "packageRules": [
@@ -143,7 +144,7 @@
         "(?<depName>quay.io/kroxylicious/python-kafka-test-client)"
       ],
       "datasourceTemplate": "docker",
-      "versioningTemplate": "{{depName}}{{#if newDigest}}@{{newDigest}}{{/if}}"
+      "versioningTemplate": "regex:^{{depName}}{{#if newDigest}}@{{newDigest}}{{/if}}$"
     },
     {
       "customType": "regex",
