@@ -40,6 +40,16 @@
         "/localstack/"
       ],
       "groupName": "localstack packages"
+    },
+    {
+      "description": "Ensure any digest-pinned, GitHub-sourced, dependencies creates a link to the diff between the two commits",
+      "matchSourceUrls": [
+        "https://github.com/**/*"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "changelogUrl": "{{sourceUrl}}/compare/{{currentDigest}}..{{newDigest}}"
     }
   ],
   "enabledManagers": [
@@ -144,10 +154,20 @@
       ],
       "matchStrings": [
         "(?<depName>quay.io/kroxylicious/kcat):(?<currentValue>\\d+\\.\\d+\\.\\d+)",
-        "(?<depName>quay.io/kroxylicious/kaf):v(?<currentValue>\\d+\\.\\d+\\.\\d+)",
         "(?<depName>quay.io/kroxylicious/python-kafka-test-client):(?<currentValue>\\d+\\.\\d+\\.\\d+-\\d+\\.\\d+\\.\\d+)@(?<currentDigest>.*)\""
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Constants.java/"
+      ],
+      "matchStrings": [
+        "(?<depName>quay.io/kroxylicious/kaf):v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "docker",
+      "versioning": "regex:^v?(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)?$"
     },
     {
       "customType": "regex",
