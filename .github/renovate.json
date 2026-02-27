@@ -42,6 +42,10 @@
       "groupName": "localstack packages"
     },
     {
+      "matchPackageNames": ["/python-kafka-test-client/"],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<compatibility>.*)?$"
+    },
+    {
       "description": "Ensure any digest-pinned, GitHub-sourced, dependencies creates a link to the diff between the two commits",
       "matchSourceUrls": [
         "https://github.com/**/*"
@@ -143,8 +147,7 @@
       "matchStrings": [
         "(?<depName>quay.io/kroxylicious/python-kafka-test-client)"
       ],
-      "datasourceTemplate": "docker",
-      "versioningTemplate": "regex:^{{depName}}{{#if newDigest}}@{{newDigest}}{{/if}}$"
+      "datasourceTemplate": "docker"
     },
     {
       "customType": "regex",
