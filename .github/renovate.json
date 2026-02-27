@@ -50,7 +50,6 @@
       ],
       "changelogUrl": "{{sourceUrl}}/compare/{{currentDigest}}..{{newDigest}}"
     }
-  ]
   ],
   "enabledManagers": [
     "custom.regex",
@@ -134,6 +133,17 @@
       "datasourceTemplate": "docker",
       "extractVersionTemplate": "^(?<version>.*)?(\\.(?<build>.*))?$",
       "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)?(\\.(?<build>.*))?$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Constants.java/"
+      ],
+      "matchStrings": [
+        "(?<depName>quay.io/kroxylicious/python-kafka-test-client)"
+      ],
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "{{depName}}{{#if newDigest}}@{{newDigest}}{{/if}}"
     },
     {
       "customType": "regex",
