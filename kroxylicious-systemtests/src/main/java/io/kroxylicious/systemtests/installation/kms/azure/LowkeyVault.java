@@ -37,7 +37,7 @@ public class LowkeyVault implements AzureKmsClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(LowkeyVault.class);
     private static final String LOWKEY_VAULT_DEFAULT_NAMESPACE = "lowkey-vault";
     @VisibleForTesting
-    static final String LOWKEY_VAULT_IMAGE = Constants.DOCKER_REGISTRY_GCR_MIRROR + "/nagyesta/lowkey-vault:7.1.13";
+    static final String LOWKEY_VAULT_IMAGE = Constants.DOCKER_REGISTRY_GCR_MIRROR + "/nagyesta/lowkey-vault:7.1.9@sha256:534f5c581d08ef4007d798af0ded9146058f092c3126665bd08f77a4c628166c";
     private final String deploymentNamespace;
 
     /**
