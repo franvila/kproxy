@@ -31,12 +31,6 @@
     },
     {
       "matchPackageNames": [
-        "/lowkey-vault/"
-      ],
-      "groupName": "lowkey-vault packages"
-    },
-    {
-      "matchPackageNames": [
         "/localstack/"
       ],
       "groupName": "localstack packages"
