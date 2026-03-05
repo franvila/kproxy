@@ -60,7 +60,7 @@
       "matchStrings": [
         "DockerImageName\\.parse\\(\"(?<depName>hashicorp/vault):(?<currentValue>\\d+\\.\\d+.\\d+)\"\\)",
         "(?<depName>hashicorp/vault):(?<currentValue>\\d+\\.\\d+.\\d+)@(?<currentDigest>.*)\"",
-        "tag:.*(?<currentValue>\\d+\\.\\d+.\\d+)@(?<currentDigest>.*)\""
+        "tag:.*(?<currentValue>\\d+\\.\\d+.\\d+)@(?<currentDigest>.*)"
       ],
       "depNameTemplate": "hashicorp/vault",
       "datasourceTemplate": "docker"
@@ -98,7 +98,7 @@
       ],
       "matchStrings": [
         "DockerImageName\\.parse\\(\"localstack/localstack:(?<currentValue>\\d+\\.\\d+.\\d+)\"\\)",
-        "tag:.*(?<currentValue>\\d+\\.\\d+.\\d+)@(?<currentDigest>.*)\""
+        "tag:.*(?<currentValue>\\d+\\.\\d+.\\d+)@(?<currentDigest>.*)"
       ],
       "depNameTemplate": "localstack/localstack",
       "datasourceTemplate": "docker"
