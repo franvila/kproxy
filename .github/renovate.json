@@ -169,7 +169,7 @@
       "matchStrings": [
         "(?<depName>quay.io/kroxylicious/kaf):(?<currentValue>\\d+\\.\\d+\\.\\d+)@(?<currentDigest>.*)\""
       ],
-      "datasourceTemplate": "docker"
+      "datasourceTemplate": "docker",
       "extractVersionTemplate": "^v(?<version>.*)?$"
     },
     {
