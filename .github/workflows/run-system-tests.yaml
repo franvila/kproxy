@@ -175,7 +175,7 @@ jobs:
         uses: dawidd6/action-download-artifact@2536c51d3d126276eb39f74d6bc9c72ac6ef30d3
         with:
           workflow: build_kroxylicious_images_arm64
-          name: kroxylicious-operator-adm
+          name: kroxylicious-operator-arm
           run_id: ${{github.run_id}}
       - name: 'Load Kroxylicious Operand Docker Image in Minikube'
         run: |
