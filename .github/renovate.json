@@ -133,10 +133,20 @@
         "DEV_GUIDE.md"
       ],
       "matchStrings": [
-        "(?<depName>curlimages/curl):(?<currentValue>\\d+\\.\\d+\\.\\d+)",
-        "(?<depName>quay.io/strimzi-test-clients/test-clients):(?<currentValue>\\d+\\.\\d+\\.\\d+)-kafka"
+        "(?<depName>curlimages/curl):(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": [
+        "kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Environment.java"
+      ],
+      "matchStrings": [
+        "(?<depName>quay.io/strimzi-test-clients/test-clients):(?<currentValue>\\d+\\.\\d+\\.\\d+)-kafka"
+      ],
+      "datasourceTemplate": "docker",
+      "extractVersionTemplate": "^(?<version>.*)-kafka.*?$",
     },
     {
       "customType": "regex",
