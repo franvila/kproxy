@@ -46,7 +46,7 @@
         "/python-kafka-test-clients/"
       ],
       "addLabels": [
-        "test/system-test/python-test-client"
+        "test/system-test/python-kafka-test-client"
       ]
     },
     {
