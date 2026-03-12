@@ -18,6 +18,11 @@
   ],
   "packageRules": [
     {
+      "description": "Label non-major",
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "addLabels": ["non-major"]
+    },
+    {
       "matchPackageNames": [
         "/kubernetes/"
       ],
@@ -39,10 +44,7 @@
       "matchPackageNames": [
         "/localstack/"
       ],
-      "groupName": "localstack packages",
-      "addLabels": [
-        "localstack"
-      ]
+      "groupName": "localstack packages"
     },
     {
       "matchPackageNames": [
