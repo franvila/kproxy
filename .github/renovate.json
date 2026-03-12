@@ -40,6 +40,9 @@
         "/localstack/"
       ],
       "groupName": "localstack packages"
+      "addLabels": [
+        "localstack"
+      ]
     },
     {
       "matchPackageNames": [
