@@ -39,7 +39,7 @@
       "matchPackageNames": [
         "/localstack/"
       ],
-      "groupName": "localstack packages"
+      "groupName": "localstack packages",
       "addLabels": [
         "localstack"
       ]
