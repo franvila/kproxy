@@ -46,6 +46,23 @@ jobs:
 
   run_system_tests:
     needs: build_images
-    uses: ./.github/workflows/run-system-tests.yaml
-    with:
-      kafkaClient: 'strimzi_test_client'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Discover test clients'
+        uses: ./.github/actions/system-tests/discover_kafka_test_clients
+      - name: 'Set kafka client'
+        id: kafkaClient
+        run: |
+          KAFKA_CLIENTS=${{ steps.discover.outputs.test_clients }}
+          for i in "${KAFKA_CLIENTS[@]}"
+          do
+            echo "$i"
+            if ${{ contains(github.event.pull_request.labels.*.name, '$i') }}
+               echo "KAKFA_CLIENT=$i" >> "$GITHUB_ENV"
+            fi
+          done
+      - name: 'Run system tests'
+        uses: ./.github/workflows/run-system-tests.yaml
+        with:
+          kafkaClient: $${{ env.KAKFA_CLIENT }}
+          testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') && true || false }}
