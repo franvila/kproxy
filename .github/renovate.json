@@ -43,7 +43,7 @@
     },
     {
       "matchPackageNames": [
-        "/python-kafka-test-clients/"
+        "/python-kafka-test-client/"
       ],
       "addLabels": [
         "test/system-test/python-kafka-test-client"
