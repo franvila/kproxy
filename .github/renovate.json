@@ -174,10 +174,10 @@
         "/kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/Environment.java/"
       ],
       "matchStrings": [
-        "(?<depName>quay.io/strimzi-test-clients/test-clients):(?<currentValue>\\d+\\.\\d+\\.\\d+)-(?<verCompatibility>\\w+)"
+        "quay.io/strimzi-test-clients/test-clients:(?<currentValue>\\d+\\.\\d+\\.\\d+)-kafka"
       ],
-      "datasourceTemplate": "docker",
-      "extractVersionTemplate": "^(?<version>.*)(-{{verCompatibility}}.*)?$"
+      "depNameTemplate": "strimzi/test-clients",
+      "datasourceTemplate": "github-releases"
     },
     {
       "customType": "regex",
