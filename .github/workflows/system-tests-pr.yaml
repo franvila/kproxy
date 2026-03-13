@@ -44,7 +44,7 @@ jobs:
   build_images:
     uses: ./.github/workflows/build-kroxylicious-container-images.yaml
 
-  set_kafka_client:
+  set_variables:
     runs-on: ubuntu-latest
     outputs:
       kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
@@ -84,8 +84,8 @@ jobs:
           echo "$FORTANIX"
 
   run_system_tests:
-    needs: [build_images,set_kafka_client]
+    needs: [build_images,set_variables]
     uses: ./.github/workflows/run-system-tests.yaml
     with:
-      kafkaClient: ${{ needs.set_kafka_client.outputs.kafka_client }}
-      testFortanixKMS: ${{ needs.set_kafka_client.outputs.fortanix }}
+      kafkaClient: ${{ needs.set_variables.outputs.kafka_client }}
+      testFortanixKMS: ${{ needs.set_variables.outputs.fortanix }}
