@@ -44,18 +44,21 @@ jobs:
   build_images:
     uses: ./.github/workflows/build-kroxylicious-container-images.yaml
 
-  run_system_tests:
+  set_kafka_client:
     needs: build_images
     runs-on: ubuntu-latest
+    outputs:
+      kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
     steps:
       - name: 'Check out repository'
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: 'Discover test clients'
+        working-directory: kroxylicious-systemtests
         id: discover
         run: |
-          client_types=$(grep -oE '^\s+[A-Z][A-Z0-9_]+' ./kroxylicious-systemtests/src/main/java/io/kroxylicious/systemtests/enums/KafkaClientType.java \
+          client_types=$(grep -oE '^\s+[A-Z][A-Z0-9_]+' ./src/main/java/io/kroxylicious/systemtests/enums/KafkaClientType.java \
             | tr -d ' ' \
             | tr '[:upper:]' '[:lower:]' \
             | paste -sd ',')
@@ -71,9 +74,11 @@ jobs:
           PR_LABELS=${{ env.LABELS }}
           echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort
           KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort | uniq -d)
-          echo "KAFKA_CLIENT=$KAFKA_CLIENT" >> "$GITHUB_ENV"
-      - name: 'Run system tests'
-        uses: ./.github/workflows/run-system-tests.yaml
-        with:
-          kafkaClient: ${{ env.KAFKA_CLIENT }}
-          # testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'fortanix') && true || false }}
+          echo "kafka_client=$KAFKA_CLIENT" >> "$GITHUB_OUTPUT"
+
+  run_system_tests:
+    needs: [build_images,set_kafka_client]
+    uses: ./.github/workflows/run-system-tests.yaml
+    with:
+      kafkaClient: $${{ needs.set_kafka_client.outputs.kafka_client }}
+      testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') && true || false }}
