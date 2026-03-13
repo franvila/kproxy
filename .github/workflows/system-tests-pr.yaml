@@ -72,9 +72,9 @@ jobs:
           PR_LABELS=${{ env.LABELS }}
           echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort
           KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort | uniq -d)
-          echo "KAKFA_CLIENT=$KAFKA_CLIENT" >> "$GITHUB_ENV"
+          echo "KAFKA_CLIENT=$KAFKA_CLIENT" >> "$GITHUB_ENV"
       - name: 'Run system tests'
         uses: ./.github/workflows/run-system-tests.yaml
         with:
-          kafkaClient: $${{ env.KAKFA_CLIENT }}
-          testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') && true || false }}
+          kafkaClient: ${{ env.KAFKA_CLIENT }}
+          testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'fortanix') && true || false }}
