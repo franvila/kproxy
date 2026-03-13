@@ -62,17 +62,15 @@ jobs:
             | paste -sd ',')
           TEST_CLIENTS="[$(echo "$client_types" | sed 's/[^,]*/"&"/g')]"
           echo "test_clients=$TEST_CLIENTS" >> $GITHUB_OUTPUT
+      - uses: snnaplab/get-labels-action@v1
       - name: 'Set kafka client'
         id: kafkaClient
         run: |
           KAFKA_CLIENTS=${{ steps.discover.outputs.test_clients }}
-          for i in "${KAFKA_CLIENTS[@]}"
-          do
-            echo "$i"
-            if ${{ contains(github.event.pull_request.labels.*.name, '$i') }}
-               echo "KAKFA_CLIENT=$i" >> "$GITHUB_ENV"
-            fi
-          done
+          PR_LABELS=${{ env.LABELS }}
+          echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g' | sed 's/test\/system-test\///g'
+          KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g' | sed 's/test\/system-test\///g' | sort | uniq -d)
+          echo "KAKFA_CLIENT=$KAFKA_CLIENT" >> "$GITHUB_ENV"
       - name: 'Run system tests'
         uses: ./.github/workflows/run-system-tests.yaml
         with:
