@@ -79,5 +79,5 @@ jobs:
     needs: [build_images,set_kafka_client]
     uses: ./.github/workflows/run-system-tests.yaml
     with:
-      kafkaClient: $${{ needs.set_kafka_client.outputs.kafka_client }}
+      kafkaClient: ${{ needs.set_kafka_client.outputs.kafka_client }}
       testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') && true || false }}
