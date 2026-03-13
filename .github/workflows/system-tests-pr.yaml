@@ -48,8 +48,20 @@ jobs:
     needs: build_images
     runs-on: ubuntu-latest
     steps:
+      - name: 'Check out repository'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: 'Discover test clients'
-        uses: ./.github/actions/system-tests/discover_kafka_test_clients
+        working-directory: kroxylicious-systemtests
+        id: discover
+        run: |
+          client_types=$(grep -oE '^\s+[A-Z][A-Z0-9_]+' ./src/main/java/io/kroxylicious/systemtests/enums/KafkaClientType.java \
+            | tr -d ' ' \
+            | tr '[:upper:]' '[:lower:]' \
+            | paste -sd ',')
+          TEST_CLIENTS="[$(echo "$client_types" | sed 's/[^,]*/"&"/g')]"
+          echo "test_clients=$TEST_CLIENTS" >> $GITHUB_OUTPUT
       - name: 'Set kafka client'
         id: kafkaClient
         run: |
