@@ -18,6 +18,11 @@
   ],
   "packageRules": [
     {
+      "description": "Label non-major",
+      "matchUpdateTypes": ["minor", "patch", "pin"],
+      "addLabels": ["non-major"]
+    },
+    {
       "matchPackageNames": [
         "/kubernetes/"
       ],
@@ -42,6 +47,7 @@
       "groupName": "localstack packages"
     },
     {
+      "description": "Label to run python test client STs",
       "matchPackageNames": [
         "/python-kafka-test-client/"
       ],
