@@ -68,10 +68,10 @@ jobs:
       - name: 'Set kafka client'
         id: kafkaClient
         run: |
-          KAFKA_CLIENTS=(${{ steps.discover.outputs.test_clients }})
-          PR_LABELS=(${{ env.LABELS }})
+          KAFKA_CLIENTS=${{ steps.discover.outputs.test_clients }}
+          PR_LABELS=${{ env.LABELS }}
           echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g' | sed 's/test\/system-test\///g'
-          KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g' | sed 's/test\/system-test\///g' | sort | uniq -d)
+          KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort | uniq -d)
           echo "KAKFA_CLIENT=$KAFKA_CLIENT" >> "$GITHUB_ENV"
       - name: 'Run system tests'
         uses: ./.github/workflows/run-system-tests.yaml
