@@ -45,7 +45,6 @@ jobs:
     uses: ./.github/workflows/build-kroxylicious-container-images.yaml
 
   set_kafka_client:
-    needs: build_images
     runs-on: ubuntu-latest
     outputs:
       kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
