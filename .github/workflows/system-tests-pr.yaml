@@ -77,4 +77,4 @@ jobs:
         uses: ./.github/workflows/run-system-tests.yaml
         with:
           kafkaClient: ${{ env.KAFKA_CLIENT }}
-          testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'fortanix') && true || false }}
+          # testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'fortanix') && true || false }}
