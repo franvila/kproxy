@@ -68,8 +68,8 @@ jobs:
       - name: 'Set kafka client'
         id: kafkaClient
         run: |
-          KAFKA_CLIENTS=${{ fromJson(steps.discover.outputs.test_clients) }}
-          PR_LABELS=${{ fromJson(env.LABELS) }}
+          KAFKA_CLIENTS=(${{ steps.discover.outputs.test_clients }})
+          PR_LABELS=(${{ env.LABELS }})
           echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g' | sed 's/test\/system-test\///g'
           KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g' | sed 's/test\/system-test\///g' | sort | uniq -d)
           echo "KAKFA_CLIENT=$KAFKA_CLIENT" >> "$GITHUB_ENV"
