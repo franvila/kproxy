@@ -63,8 +63,8 @@ jobs:
           TEST_CLIENTS="[$(echo "$client_types" | sed 's/[^,]*/"&"/g')]"
           echo "test_clients=$TEST_CLIENTS" >> $GITHUB_OUTPUT
       - uses: snnaplab/get-labels-action@v1
-        env: 
-          NUMBER: 280
+        with:
+          number: 280
       - name: 'Set kafka client'
         id: kafkaClient
         run: |
