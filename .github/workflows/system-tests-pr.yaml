@@ -65,7 +65,7 @@ jobs:
           echo "test_clients=$TEST_CLIENTS" >> $GITHUB_OUTPUT
       - uses: snnaplab/get-labels-action@v1
         with:
-          number: ${{ github.event.pull_request.number }} || 280
+          number: ${{ github.event.pull_request.number || 280 }} 
       - name: 'Set kafka client'
         id: kafkaClient
         run: |
@@ -80,4 +80,4 @@ jobs:
     uses: ./.github/workflows/run-system-tests.yaml
     with:
       kafkaClient: ${{ needs.set_kafka_client.outputs.kafka_client }}
-      testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') && true || false }}
+      testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'fortanix') && true || false }}
