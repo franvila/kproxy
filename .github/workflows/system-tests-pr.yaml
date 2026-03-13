@@ -48,6 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
+      fortanix: ${{ steps.fortanixKMS.outputs.fortanix }}
     steps:
       - name: 'Check out repository'
         uses: actions/checkout@v6
@@ -74,10 +75,17 @@ jobs:
           KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort | uniq -d || echo 'strimzi_test_client')
           echo "kafka_client=$KAFKA_CLIENT" >> "$GITHUB_OUTPUT"
           echo "$KAFKA_CLIENT"
+      - name: 'Set Fortanix KMS'
+        id: fortanixKMS
+        run: |
+          PR_LABELS=${{ env.LABELS }}
+          FORTANIX=$([[ ${PR_LABELS[*]} =~ 'fortanix' ]] && echo 'true' || echo 'false')
+          echo "fortanix=$FORTANIX" >> "$GITHUB_OUTPUT"
+          echo "$FORTANIX"
 
   run_system_tests:
     needs: [build_images,set_kafka_client]
     uses: ./.github/workflows/run-system-tests.yaml
     with:
       kafkaClient: ${{ needs.set_kafka_client.outputs.kafka_client }}
-      testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'fortanix') && true || false }}
+      testFortanixKMS: ${{ needs.set_kafka_client.outputs.fortanix }}
