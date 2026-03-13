@@ -71,9 +71,9 @@ jobs:
         run: |
           KAFKA_CLIENTS=${{ steps.discover.outputs.test_clients }}
           PR_LABELS=${{ env.LABELS }}
-          echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort
           KAFKA_CLIENT=$(echo "${PR_LABELS[@]},${KAFKA_CLIENTS[@]}" | sed 's/,/\n/g; s/\[//g; s/\]//g; s/test\/system-test\///g' | sort | uniq -d)
           echo "kafka_client=$KAFKA_CLIENT" >> "$GITHUB_OUTPUT"
+          echo "$KAFKA_CLIENT"
 
   run_system_tests:
     needs: [build_images,set_kafka_client]
