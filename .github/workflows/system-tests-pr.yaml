@@ -81,6 +81,11 @@ jobs:
           FORTANIX=${{ contains(github.event.pull_request.labels.*.name, 'fortanix') }}
           echo "fortanix=$FORTANIX" >> "$GITHUB_OUTPUT"
           echo "$FORTANIX"
+      - name: 'Test gh'
+        run: |
+         echo "::set-output name=labels::$(gh api --jq '.labels.[].name' /repos/{owner}/{repo}/pulls/${{ github.event.number }})\n"
+        env:
+           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   run_system_tests:
     needs: [build_images,set_variables]
