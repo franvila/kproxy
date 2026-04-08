@@ -78,8 +78,7 @@ jobs:
       - name: 'Set Fortanix KMS'
         id: fortanixKMS
         run: |
-          PR_LABELS="${{ env.LABELS }}"
-          FORTANIX=$([[ ${PR_LABELS[*]} =~ 'fortanix' ]] && echo 'true' || echo 'false')
+          FORTANIX=${{ contains(github.event.pull_request.labels.*.name, 'fortanix') }}
           echo "fortanix=$FORTANIX" >> "$GITHUB_OUTPUT"
           echo "$FORTANIX"
 
