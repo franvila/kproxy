@@ -82,7 +82,7 @@ jobs:
       - name: 'Set Fortanix KMS'
         id: fortanixKMS
         run: |
-          FORTANIX=$([[ "$LABELS" =~ fortanix ]] && echo 'true' || echo 'false')
+          FORTANIX=$([[ "$LABELS" =~ fortanix ]] && echo true || echo false)
           echo "fortanix=$FORTANIX" >> "$GITHUB_OUTPUT"
           echo "$FORTANIX"
 
@@ -91,4 +91,4 @@ jobs:
     uses: ./.github/workflows/run-system-tests.yaml
     with:
       kafkaClient: ${{ needs.set_variables.outputs.kafka_client }}
-      testFortanixKMS: "${{ needs.set_variables.outputs.fortanix }}"
+      testFortanixKMS: ${{ needs.set_variables.outputs.fortanix }}
