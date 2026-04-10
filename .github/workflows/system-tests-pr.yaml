@@ -18,7 +18,7 @@ name: System Tests for Pull-Requests
 
 on:
   pull_request:
-    types: [ opened, synchronize, reopened ]
+    types: [ opened, synchronize, reopened, labeled ]
     paths-ignore:
       - '**/**.md'
       - '**/**.txt'
@@ -82,7 +82,8 @@ jobs:
       - name: 'Set Fortanix KMS'
         id: fortanixKMS
         run: |
-          FORTANIX=$([[ "$LABELS" =~ fortanix ]] && echo true || echo false)
+          echo ${{ github.event.pull_request.labels.*.name }}
+          FORTANIX=${{ contains(github.event.pull_request.labels.*.name, 'fortanix') }}
           echo "fortanix=$FORTANIX" >> "$GITHUB_OUTPUT"
           echo "$FORTANIX"
 
