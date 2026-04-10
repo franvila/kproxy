@@ -82,8 +82,7 @@ jobs:
       - name: 'Set Fortanix KMS'
         id: fortanixKMS
         run: |
-          echo ${{ github.event.pull_request.labels.*.name }}
-          FORTANIX=${{ contains(github.event.pull_request.labels.*.name, 'fortanix') }}
+          FORTANIX=${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') }}
           echo "fortanix=$FORTANIX" >> "$GITHUB_OUTPUT"
           echo "$FORTANIX"
 
