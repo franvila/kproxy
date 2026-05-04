@@ -23,7 +23,6 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import io.fabric8.kubernetes.api.model.APIGroup;
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResourceBuilder;
@@ -89,7 +88,6 @@ class ResourcesUtilTest {
     public static final String RESOURCE_NAME = "name";
     public static final Clock TEST_CLOCK = Clock.fixed(Instant.EPOCH, ZoneId.of("Z"));
     protected static final ConfigMap EMPTY_CONFIG_NMAP = new ConfigMapBuilder().withData(Map.of()).build();
-    public static final String KAFKA_GROUP_NAME = "kafka.strimzi.io";
 
     @Test
     void rfc1035DnsLabel() {
@@ -823,7 +821,7 @@ class ResourcesUtilTest {
         Context<KafkaService> reconcilerContext = mock(Context.class);
         KubernetesClient client = mock();
         when(reconcilerContext.getClient()).thenReturn(client);
-        when(reconcilerContext.getClient().getApiGroup(KAFKA_GROUP_NAME)).thenReturn(new APIGroup());
+        when(reconcilerContext.getClient().supports(Kafka.class)).thenReturn(true);
         when(reconcilerContext.getSecondaryResource(Kafka.class, KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME))
                 .thenReturn(Optional.ofNullable(kafka));
 
@@ -841,6 +839,48 @@ class ResourcesUtilTest {
                                 .singleCondition()
                                 .isResolvedRefsFalse(expectedCondition, stringThrowingConsumer)));
 
+    }
+
+    @Test
+    void shouldReturnResolvedRefsFalseWhenKafkaCrdNotSupported() {
+        // Given
+        StrimziKafkaRef strimziKafkaRef = new StrimziKafkaRefBuilder()
+                .withListenerName("plain")
+                .withNewRef()
+                .withName("my-cluster")
+                .endRef()
+                .build();
+        KafkaService service = new KafkaServiceBuilder()
+                .withNewSpec()
+                .withStrimziKafkaRef(strimziKafkaRef)
+                .endSpec()
+                .build();
+        @SuppressWarnings("unchecked")
+        Context<KafkaService> reconcilerContext = mock(Context.class);
+        KubernetesClient client = mock();
+        when(reconcilerContext.getClient()).thenReturn(client);
+        when(reconcilerContext.getClient().supports(Kafka.class)).thenReturn(false);
+
+        // When
+        ResourceCheckResult<KafkaService> actual = ResourcesUtil.checkStrimziKafkaRef(
+                service,
+                reconcilerContext,
+                KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME,
+                strimziKafkaRef,
+                "spec.strimziKafkaRef",
+                new KafkaServiceStatusFactory(TEST_CLOCK));
+
+        // Then
+        assertThat(actual)
+                .isNotNull()
+                .satisfies(kafkaServiceResourceCheckResult -> assertThat(kafkaServiceResourceCheckResult.resource())
+                        .isNotNull()
+                        .satisfies(actualKafkaService -> KafkaServiceStatusAssert.assertThat(actualKafkaService.getStatus())
+                                .singleCondition()
+                                .isResolvedRefsFalse(
+                                        Condition.REASON_REFS_NOT_FOUND,
+                                        message -> assertThat(message)
+                                                .contains("Kafka CRD not supported on cluster"))));
     }
 
     @ParameterizedTest
@@ -970,5 +1010,158 @@ class ResourcesUtilTest {
                 .isThrownBy(() -> ResourcesUtil.deriveStoreTypeFromKeySuffix(trustAnchorRef))
                 .withMessage("Cannot derive trust store type from the data key: exampleKey as the data key does not include a file extension."
                         + " Use the `storeType` field to specify the format of the key store.");
+    }
+
+    @Test
+    void checkStrimziCertificateShouldSucceedWhenSecretExistsWithCaCrtKey() {
+        // Given
+        String namespace = "test-namespace";
+        String kafkaName = "my-cluster";
+        KafkaService service = new KafkaServiceBuilder()
+                .withNewMetadata()
+                .withName("test-service")
+                .withNamespace(namespace)
+                .endMetadata()
+                .build();
+
+        StrimziKafkaRef strimziKafkaRef = new StrimziKafkaRefBuilder()
+                .withNewRef()
+                .withName(kafkaName)
+                .withKind("Kafka")
+                .withGroup("kafka.strimzi.io")
+                .endRef()
+                .withListenerName("plain")
+                .withTrustStrimziCaCertificate(true)
+                .build();
+
+        Secret clusterCaSecret = new SecretBuilder()
+                .withNewMetadata()
+                .withName(kafkaName + "-cluster-ca-cert")
+                .withNamespace(namespace)
+                .endMetadata()
+                .addToData("ca.crt", "Y2VydGlmaWNhdGU=")
+                .build();
+
+        Context<KafkaService> context = mock();
+        KubernetesClient client = mock();
+        when(context.getClient()).thenReturn(client);
+        when(client.secrets()).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace)).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert")).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert").get()).thenReturn(clusterCaSecret);
+
+        KafkaServiceStatusFactory statusFactory = new KafkaServiceStatusFactory(TEST_CLOCK);
+
+        // When
+        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context, strimziKafkaRef, statusFactory);
+
+        // Then
+        assertThat(result.resource()).isNull();
+        assertThat(result.referents()).hasSize(1);
+        assertThat(result.referents().get(0)).isEqualTo(clusterCaSecret);
+    }
+
+    @Test
+    void checkStrimziCertificateShouldFailWhenSecretNotFound() {
+        // Given
+        String namespace = "test-namespace";
+        String kafkaName = "my-cluster";
+        KafkaService service = new KafkaServiceBuilder()
+                .withNewMetadata()
+                .withName("test-service")
+                .withNamespace(namespace)
+                .withGeneration(1L)
+                .endMetadata()
+                .build();
+
+        StrimziKafkaRef strimziKafkaRef = new StrimziKafkaRefBuilder()
+                .withNewRef()
+                .withName(kafkaName)
+                .withKind("Kafka")
+                .withGroup("kafka.strimzi.io")
+                .endRef()
+                .withListenerName("plain")
+                .withTrustStrimziCaCertificate(true)
+                .build();
+
+        Context<KafkaService> context = mock();
+        KubernetesClient client = mock();
+        when(context.getClient()).thenReturn(client);
+        when(client.secrets()).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace)).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert")).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert").get()).thenReturn(null);
+
+        KafkaServiceStatusFactory statusFactory = new KafkaServiceStatusFactory(TEST_CLOCK);
+
+        // When
+        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context, strimziKafkaRef, statusFactory);
+
+        // Then
+        assertThat(result.resource()).isNotNull();
+        assertThat(result.referents()).isEmpty();
+        assertThat(result.resource().getStatus()).isNotNull();
+        assertThat(result.resource().getStatus().getConditions()).isNotEmpty();
+        KafkaServiceStatusAssert.assertThat(result.resource().getStatus())
+                .singleCondition()
+                .isResolvedRefsFalse(
+                        Condition.REASON_REFS_NOT_FOUND,
+                        "spec.strimziKafkaRef: expected trust anchor my-cluster-cluster-ca-cert, which ought to be generated by Strimzi for resource my-cluster, is not found in namespace test-namespace");
+    }
+
+    @Test
+    void checkStrimziCertificateShouldFailWhenSecretMissingCaCrtKey() {
+        // Given
+        String namespace = "test-namespace";
+        String kafkaName = "my-cluster";
+        KafkaService service = new KafkaServiceBuilder()
+                .withNewMetadata()
+                .withName("test-service")
+                .withNamespace(namespace)
+                .withGeneration(1L)
+                .endMetadata()
+                .build();
+
+        StrimziKafkaRef strimziKafkaRef = new StrimziKafkaRefBuilder()
+                .withNewRef()
+                .withName(kafkaName)
+                .withKind("Kafka")
+                .withGroup("kafka.strimzi.io")
+                .endRef()
+                .withListenerName("plain")
+                .withTrustStrimziCaCertificate(true)
+                .build();
+
+        Secret clusterCaSecret = new SecretBuilder()
+                .withNewMetadata()
+                .withName(kafkaName + "-cluster-ca-cert")
+                .withNamespace(namespace)
+                .endMetadata()
+                .addToData("wrong-key", "Y2VydGlmaWNhdGU=")
+                .build();
+
+        Context<KafkaService> context = mock();
+        KubernetesClient client = mock();
+        when(context.getClient()).thenReturn(client);
+        when(client.secrets()).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace)).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert")).thenReturn(mock());
+        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert").get()).thenReturn(clusterCaSecret);
+
+        KafkaServiceStatusFactory statusFactory = new KafkaServiceStatusFactory(TEST_CLOCK);
+
+        // When
+        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context, strimziKafkaRef, statusFactory);
+
+        // Then
+        assertThat(result.resource()).isNotNull();
+        assertThat(result.referents()).isEmpty();
+        assertThat(result.resource().getStatus()).isNotNull();
+        assertThat(result.resource().getStatus().getConditions()).isNotEmpty();
+        KafkaServiceStatusAssert.assertThat(result.resource().getStatus())
+                .singleCondition()
+                .isResolvedRefsFalse(
+                        Condition.REASON_INVALID_REFERENCED_RESOURCE,
+                        "my-cluster-cluster-ca-cert: referenced resource does not contain key ca.crt");
     }
 }
