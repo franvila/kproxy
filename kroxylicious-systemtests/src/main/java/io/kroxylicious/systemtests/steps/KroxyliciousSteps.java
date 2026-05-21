@@ -174,7 +174,7 @@ public class KroxyliciousSteps {
     public static List<ConsumerRecord> consumeMessageFromKafkaCluster(String clientNamespace, String topicName, String kafkaClusterName,
                                                                       String kafkaNamespace, int numberOfMessages,
                                                                       Duration timeout) {
-        String kafkaBootstrap = kafkaClusterName + "-kafka-bootstrap." + kafkaNamespace + ".svc.cluster.local:9092";
+        String kafkaBootstrap = kafkaClusterName + "-kafka-bootstrap." + kafkaNamespace + Constants.SVC_CLUSTER_LOCAL + ":9092";
         return consumeMessages(clientNamespace, topicName, kafkaBootstrap, numberOfMessages, timeout);
     }
 }

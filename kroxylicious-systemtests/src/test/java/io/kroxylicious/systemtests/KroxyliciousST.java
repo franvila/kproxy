@@ -11,6 +11,7 @@ import java.util.List;
 
 import org.apache.kafka.common.record.CompressionType;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -22,6 +23,7 @@ import io.fabric8.kubernetes.api.model.Pod;
 
 import io.kroxylicious.systemtests.clients.KafkaClients;
 import io.kroxylicious.systemtests.clients.records.ConsumerRecord;
+import io.kroxylicious.systemtests.installation.kroxylicious.CertManager;
 import io.kroxylicious.systemtests.installation.kroxylicious.Kroxylicious;
 import io.kroxylicious.systemtests.installation.kroxylicious.KroxyliciousOperator;
 import io.kroxylicious.systemtests.steps.KafkaSteps;
@@ -42,7 +44,9 @@ class KroxyliciousST extends AbstractSystemTests {
     private static Kroxylicious kroxylicious;
     private final String clusterName = "kroxylicious-st-cluster";
     private static final String MESSAGE = "Hello-world";
+    private static final String PREFIX = "optr-cd";
     private KroxyliciousOperator kroxyliciousOperator;
+    private CertManager certManager;
 
     /**
      * Produce and consume message.
@@ -235,6 +239,50 @@ class KroxyliciousST extends AbstractSystemTests {
                 .extracting(ConsumerRecord::getPayload)
                 .hasSize(numberOfMessages)
                 .allSatisfy(v -> assertThat(v).contains(MESSAGE));
+    }
+
+    @Test
+    void kroxyliciousLoadBalancerIngress(String namespace) {
+        int numberOfMessages = 1;
+        certManager = new CertManager();
+        certManager.deploy();
+        var issuer = certManager.issuer(namespace);
+        var cert = certManager.certFor(namespace, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
+                clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
+                "broker0." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
+                "broker1." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
+                "broker2." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL);
+
+        resourceManager.createOrUpdateResourceWithWait(issuer, cert);
+
+        // start Kroxylicious
+        LOGGER.atInfo().setMessage("Given Kroxylicious in {} namespace with {} replicas").addArgument(namespace).addArgument(1).log();
+        kroxylicious = new Kroxylicious(namespace);
+        var tls = kroxylicious.tlsConfigFromCert(Constants.KROXYLICIOUS_SERVER_CERTIFICATE_NAME);
+        kroxylicious.deployPortIdentifiesNodeLoadBalancerWithNoFilters(clusterName, tls);
+        String bootstrap = kroxylicious.getBootstrap(clusterName);
+
+        LOGGER.atInfo().setMessage("And a kafka Topic named {}").addArgument(topicName).log();
+        KafkaSteps.createTopic(namespace, topicName, bootstrap, 3, 1);
+
+        LOGGER.atInfo().setMessage("When {} messages '{}' are sent to the topic '{}'").addArgument(numberOfMessages).addArgument(MESSAGE).addArgument(topicName).log();
+        KroxyliciousSteps.produceMessages(namespace, topicName, bootstrap, MESSAGE, numberOfMessages);
+
+        LOGGER.atInfo().setMessage("Then the messages are consumed").log();
+        List<ConsumerRecord> result = KroxyliciousSteps.consumeMessages(namespace, topicName, bootstrap, numberOfMessages, Duration.ofMinutes(2));
+        LOGGER.atInfo().setMessage("Received: {}").addArgument(result).log();
+
+        assertThat(result).withFailMessage("expected messages have not been received!")
+                .extracting(ConsumerRecord::getPayload)
+                .hasSize(numberOfMessages)
+                .allSatisfy(v -> assertThat(v).contains(MESSAGE));
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (certManager != null) {
+            certManager.delete();
+        }
     }
 
     @AfterAll

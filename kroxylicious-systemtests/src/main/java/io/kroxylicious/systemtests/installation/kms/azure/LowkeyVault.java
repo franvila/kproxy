@@ -113,8 +113,8 @@ public class LowkeyVault implements AzureKmsClient {
         String password;
         try {
             KeystoreManager entraCertGen = new KeystoreManager();
-            String domain = LowkeyVaultTemplates.LOWKEY_VAULT_CLUSTER_IP_SERVICE_NAME + "." + LOWKEY_VAULT_DEFAULT_NAMESPACE + ".svc.cluster.local";
-            String mockOauthDomain = LowkeyVaultTemplates.MOCK_OAUTH_SERVER_CLUSTER_IP_SERVICE_NAME + "." + LOWKEY_VAULT_DEFAULT_NAMESPACE + ".svc.cluster.local";
+            String domain = LowkeyVaultTemplates.LOWKEY_VAULT_CLUSTER_IP_SERVICE_NAME + "." + LOWKEY_VAULT_DEFAULT_NAMESPACE + Constants.SVC_CLUSTER_LOCAL;
+            String mockOauthDomain = LowkeyVaultTemplates.MOCK_OAUTH_SERVER_CLUSTER_IP_SERVICE_NAME + "." + LOWKEY_VAULT_DEFAULT_NAMESPACE + Constants.SVC_CLUSTER_LOCAL;
             String ipAddress = DeploymentUtils.getNodeIP();
             CertificateBuilder certificateBuilder = entraCertGen.newCertificateBuilder(entraCertGen.buildDistinguishedName("test@kroxylicious.io", domain, "Engineering",
                     "Kroxylicious.io", null, null, "US"))

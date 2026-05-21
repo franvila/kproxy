@@ -59,7 +59,7 @@ public class KroxyliciousKafkaClusterRefTemplates {
         }
         else {
             // Some operator tests do not need kafka running so we can set a default value
-            return String.format("%s-kafka-bootstrap.%s.svc.cluster.local:9092".formatted(clusterRefName, Constants.KAFKA_DEFAULT_NAMESPACE));
+            return String.format("%s-kafka-bootstrap.%s.%s:9092".formatted(clusterRefName, Constants.KAFKA_DEFAULT_NAMESPACE, Constants.SVC_CLUSTER_LOCAL));
         }
     }
 }

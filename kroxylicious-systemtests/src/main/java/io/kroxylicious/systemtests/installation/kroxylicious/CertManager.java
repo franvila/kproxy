@@ -71,12 +71,12 @@ public class CertManager {
         //@formatter:off
         return new CertificateBuilder()
                 .withNewMetadata()
-                    .withName("server-certificate")
+                    .withName(Constants.KROXYLICIOUS_SERVER_CERTIFICATE_NAME)
                     .withNamespace(namespace)
                 .endMetadata()
                 .withNewSpec()
                     .withCommonName(commonName)
-                    .withSecretName("server-certificate")
+                    .withSecretName(Constants.KROXYLICIOUS_SERVER_CERTIFICATE_NAME)
                     .withNewPrivateKey()
                         .withAlgorithm("RSA")
                         .withEncoding("PKCS8")
@@ -86,7 +86,7 @@ public class CertManager {
                     .withUsages("server auth")
                     .withNewIssuerRef()
                         .withName(SELF_SINGED_ISSUER_NAME)
-                        .withKind("Issuer")
+                        .withKind(Constants.ISSUER_KIND)
                         .withGroup("cert-manager.io")
                     .endIssuerRef()
                 .endSpec();

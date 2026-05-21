@@ -135,11 +135,11 @@ class OperatorChangeDetectionST extends AbstractSystemTests {
     void shouldUpdateDeploymentWhenDownstreamTlsCertUpdated(String namespace) {
         // Given
         var issuer = certManager.issuer(namespace);
-        var cert = certManager.certFor(namespace, PREFIX + "-cluster-ip." + namespace + ".svc.cluster.local");
+        var cert = certManager.certFor(namespace, PREFIX + "-cluster-ip." + namespace + Constants.SVC_CLUSTER_LOCAL);
 
         resourceManager.createOrUpdateResourceWithWait(issuer, cert);
 
-        var tls = kroxylicious.tlsConfigFromCert("server-certificate");
+        var tls = kroxylicious.tlsConfigFromCert(Constants.KROXYLICIOUS_SERVER_CERTIFICATE_NAME);
         kroxylicious.deployPortIdentifiesNodeWithDownstreamTlsAndNoFilters("test-vkc", tls);
 
         String originalChecksum = getInitialChecksum(namespace);
@@ -148,7 +148,7 @@ class OperatorChangeDetectionST extends AbstractSystemTests {
         resourceManager.replaceResourceWithRetries(cert.build(),
                 certToPatch -> {
                     var dnsNames = Optional.ofNullable(certToPatch.getSpec().getDnsNames()).orElse(new ArrayList<>());
-                    dnsNames.add("test-vkc-cluster-ip.my-proxy.svc.cluster.local");
+                    dnsNames.add("test-vkc-cluster-ip.my-proxy" + Constants.SVC_CLUSTER_LOCAL);
                     certToPatch.getSpec().setDnsNames(dnsNames);
                 });
         LOGGER.info("SAN added to downstream tls cert");
@@ -161,11 +161,11 @@ class OperatorChangeDetectionST extends AbstractSystemTests {
     void shouldUpdateDeploymentWhenDownstreamTrustUpdated(String namespace) {
         // Given
         var issuer = certManager.issuer(namespace);
-        var cert = certManager.certFor(namespace, PREFIX + "-cluster-ip." + namespace + ".svc.cluster.local");
+        var cert = certManager.certFor(namespace, PREFIX + "-cluster-ip." + namespace + Constants.SVC_CLUSTER_LOCAL);
 
         resourceManager.createOrUpdateResourceWithWait(issuer, cert);
 
-        var tls = kroxylicious.tlsConfigFromCert("server-certificate");
+        var tls = kroxylicious.tlsConfigFromCert(Constants.KROXYLICIOUS_SERVER_CERTIFICATE_NAME);
 
         kroxylicious.deployPortIdentifiesNodeWithDownstreamTlsAndNoFilters("test-vkc", tls);
 

@@ -11,6 +11,7 @@ import java.net.URI;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.Environment;
 import io.kroxylicious.systemtests.resources.manager.ResourceManager;
 import io.kroxylicious.systemtests.templates.kms.azure.LowkeyVaultTemplates;
@@ -77,7 +78,7 @@ public class MockOauthServer {
      */
     public URI getBaseUri() {
         return URI.create("https://" + LowkeyVaultTemplates.MOCK_OAUTH_SERVER_CLUSTER_IP_SERVICE_NAME
-                + "." + MOCK_OAUTH_SERVER_DEFAULT_NAMESPACE + ".svc.cluster.local:80");
+                + "." + MOCK_OAUTH_SERVER_DEFAULT_NAMESPACE + Constants.SVC_CLUSTER_LOCAL + ":80");
     }
 
     /**

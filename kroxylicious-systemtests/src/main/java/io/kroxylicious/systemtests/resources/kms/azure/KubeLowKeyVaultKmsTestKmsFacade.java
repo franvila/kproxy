@@ -64,7 +64,7 @@ public class KubeLowKeyVaultKmsTestKmsFacade extends AbstractAzureKeyVaultKmsTes
         }
         try {
             String password = DeploymentUtils.getSecretValue(lowKeyVault.getDefaultNamespace(), Constants.KEYSTORE_SECRET_NAME, "password");
-            String keyVaultHost = lowKeyVault.getDefaultNamespace() + ".svc.cluster.local";
+            String keyVaultHost = lowKeyVault.getDefaultNamespace() + Constants.SVC_CLUSTER_LOCAL;
 
             TrustStore vaultTrust = new TrustStore("${secret:" + Constants.KEYSTORE_SECRET_NAME + ":" + Constants.KEYSTORE_FILE_NAME + "}",
                     new InlinePassword(password), "JKS");

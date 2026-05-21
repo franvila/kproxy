@@ -181,7 +181,7 @@ public class KafkaSteps {
 
         return kafkaPod.map(pod -> {
             String kafkaPodName = pod.getMetadata().getName();
-            String kafkaBootstrap = clusterName + "-kafka-bootstrap." + Constants.KAFKA_DEFAULT_NAMESPACE + ".svc.cluster.local:9094";
+            String kafkaBootstrap = clusterName + "-kafka-bootstrap." + Constants.KAFKA_DEFAULT_NAMESPACE + Constants.SVC_CLUSTER_LOCAL + ":9094";
             List<String> command = List.of("/bin/bash", "./bin/kafka-consumer-groups.sh", "--bootstrap-server", kafkaBootstrap, "--list");
             ExecResult result = cmdKubeClient(Constants.KAFKA_DEFAULT_NAMESPACE).execInPod(kafkaPodName, true, command);
 

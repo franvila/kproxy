@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import io.fabric8.certmanager.api.model.v1.CertificateBuilder;
 import io.fabric8.certmanager.api.model.v1.IssuerBuilder;
 
+import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.installation.kroxylicious.CertManager;
 import io.kroxylicious.systemtests.resources.manager.ResourceManager;
 import io.kroxylicious.systemtests.utils.DeploymentUtils;
@@ -162,12 +163,12 @@ public class AdmissionWebhook {
                 .withName(ADMISSION_TLS_ISSUER_NAME)
                 .withKind("Issuer")
                 .endIssuerRef()
-                .withCommonName(ADMISSION_DEPLOYMENT_NAME + "." + ADMISSION_NAMESPACE + ".svc.cluster.local")
+                .withCommonName(ADMISSION_DEPLOYMENT_NAME + "." + ADMISSION_NAMESPACE + Constants.SVC_CLUSTER_LOCAL)
                 .withDnsNames(
                         ADMISSION_DEPLOYMENT_NAME,
                         ADMISSION_DEPLOYMENT_NAME + "." + ADMISSION_NAMESPACE,
                         ADMISSION_DEPLOYMENT_NAME + "." + ADMISSION_NAMESPACE + ".svc",
-                        ADMISSION_DEPLOYMENT_NAME + "." + ADMISSION_NAMESPACE + ".svc.cluster.local")
+                        ADMISSION_DEPLOYMENT_NAME + "." + ADMISSION_NAMESPACE + Constants.SVC_CLUSTER_LOCAL)
                 .withNewPrivateKey()
                 .withEncoding("PKCS8")
                 .endPrivateKey()

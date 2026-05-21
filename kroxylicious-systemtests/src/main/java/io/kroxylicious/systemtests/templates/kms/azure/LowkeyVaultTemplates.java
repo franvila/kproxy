@@ -114,7 +114,7 @@ public class LowkeyVaultTemplates {
     }
 
     private static List<EnvVar> lowkeyVaultEnvVars(String namespace, String nodePortEndpoint, String certFilePath, String password) {
-        String fqdnEndpoint = LOWKEY_VAULT_CLUSTER_IP_SERVICE_NAME + "." + namespace + ".svc.cluster.local:" + CLUSTER_IP_PORT;
+        String fqdnEndpoint = LOWKEY_VAULT_CLUSTER_IP_SERVICE_NAME + "." + namespace + Constants.SVC_CLUSTER_LOCAL + ":" + CLUSTER_IP_PORT;
         return new ArrayList<>(List.of(
                 envVar("server.ssl.key-store-type", "JKS"),
                 envVar("server.ssl.key-store", certFilePath),

@@ -23,10 +23,12 @@ public final class Constants {
     public static final String KROXYLICIOUS_OPERATOR_NAMESPACE = "kroxylicious-operator";
     public static final String KROXYLICIOUS_PROXY_SIMPLE_NAME = "simple";
     public static final String KROXYLICIOUS_INGRESS_CLUSTER_IP = "cluster-ip";
+    public static final String KROXYLICIOUS_INGRESS_LOAD_BALANCER = "load-balancer";
     public static final String KROXYLICIOUS_ENCRYPTION_FILTER_NAME = "encryption";
     public static final String KROXYLICIOUS_AUTHORIZATION_FILTER_NAME = "authorization";
     public static final String KROXYLICIOUS_SASL_INSPECTOR_FILTER_NAME = "sasl-inspector";
     public static final String KROXYLICIOUS_ENTITY_ISOLATION_FILTER_NAME = "entity-isolation";
+    public static final String KROXYLICIOUS_SERVER_CERTIFICATE_NAME = "server-certificate";
     public static final String KROXYLICIOUS_TLS_CLIENT_CA_CERT = "my-cluster-clients-ca-cert";
     public static final String KROXYLICIOUS_TLS_CA_NAME = "ca.pem";
     public static final String KROXYLICIOUS_OPERATOR_SUBSCRIPTION_NAME = Environment.KROXYLICIOUS_OLM_DEPLOYMENT_NAME + "-v" + Environment.KROXYLICIOUS_OPERATOR_VERSION
@@ -96,6 +98,8 @@ public final class Constants {
     public static final String NAMESPACE = "Namespace";
     public static final String SECRET = "Secret";
     public static final String SERVICE = "Service";
+    public static final String CERTIFICATE_KIND = "Certificate";
+    public static final String ISSUER_KIND = "Issuer";
     public static final String STRIMZI_KAFKA_KIND = "Kafka";
     public static final String STRIMZI_KAFKA_NODE_POOL_KIND = "KafkaNodePool";
     public static final String KROXYLICIOUS_KAFKA_PROTOCOL_FILTER_KIND = "KafkaProtocolFilter";
@@ -165,6 +169,7 @@ public final class Constants {
      * Auxiliary variables for storing data across our tests
      */
     public static final String DOCKER_REGISTRY_GCR_MIRROR = "mirror.gcr.io";
+    public static final String SVC_CLUSTER_LOCAL = ".svc.cluster.local";
 
     /**
      * Architectures

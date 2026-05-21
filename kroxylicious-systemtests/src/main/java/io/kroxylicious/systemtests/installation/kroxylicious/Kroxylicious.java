@@ -13,11 +13,14 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import org.apache.commons.lang3.exception.UncheckedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentStatus;
+import io.netty.pkitesting.CertificateBuilder;
+import io.netty.pkitesting.X509Bundle;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerStatus;
 
 import io.kroxylicious.filter.entityisolation.EntityIsolation;
@@ -41,7 +44,9 @@ import io.kroxylicious.systemtests.templates.kroxylicious.KroxyliciousKafkaProxy
 import io.kroxylicious.systemtests.templates.kroxylicious.KroxyliciousSecretTemplates;
 import io.kroxylicious.systemtests.templates.kroxylicious.KroxyliciousVirtualKafkaClusterTemplates;
 import io.kroxylicious.systemtests.templates.strimzi.KafkaUserTemplates;
+import io.kroxylicious.systemtests.utils.DeploymentUtils;
 import io.kroxylicious.systemtests.utils.KafkaUtils;
+import io.kroxylicious.testing.kafka.common.KeystoreManager;
 import io.kroxylicious.testing.kms.TestKmsFacade;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
@@ -189,16 +194,16 @@ public class Kroxylicious {
     /**
      * Tls config from cert.
      *
-     * @param certNane the cert nane
+     * @param certName the cert name
      * @return the tls
      */
-    public Tls tlsConfigFromCert(String certNane) {
+    public Tls tlsConfigFromCert(String certName) {
         TlsBuilder tlsBuilder = new TlsBuilder();
-        if (certNane != null) {
+        if (certName != null) {
             // formatter:off
             tlsBuilder
                     .withNewCertificateRef()
-                    .withName(certNane)
+                    .withName(certName)
                     .withKind("Secret")
                     .endCertificateRef();
             // formatter:on
@@ -298,6 +303,36 @@ public class Kroxylicious {
                 KroxyliciousKafkaClusterRefTemplates.defaultKafkaClusterRefCR(deploymentNamespace, clusterName),
                 KroxyliciousVirtualKafkaClusterTemplates.defaultVirtualKafkaClusterCR(deploymentNamespace, clusterName, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME,
                         clusterName, Constants.KROXYLICIOUS_INGRESS_CLUSTER_IP));
+    }
+
+    public void deployPortIdentifiesNodeLoadBalancerWithNoFilters(String clusterName, Tls tls) {
+        String certificate = installCertificates(clusterName);
+        resourceManager.createResourceFromBuilder(
+                KroxyliciousKafkaProxyTemplates.defaultKafkaProxyCR(deploymentNamespace, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME, 1),
+                KroxyliciousKafkaProxyIngressTemplates.kafkaProxyIngressLoadBalancerCR(deploymentNamespace, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER,
+                        Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME, clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + deploymentNamespace + Constants.SVC_CLUSTER_LOCAL),
+                KroxyliciousKafkaClusterRefTemplates.defaultKafkaClusterRefCR(deploymentNamespace, clusterName),
+                KroxyliciousConfigMapTemplates.getClusterCaConfigMap(deploymentNamespace, Constants.KROXYLICIOUS_TLS_CLIENT_CA_CERT, certificate),
+                KroxyliciousVirtualKafkaClusterTemplates.defaultVirtualKafkaClusterWithTlsCR(deploymentNamespace, clusterName, Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME,
+                        clusterName, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER, tls));
+    }
+
+    private String installCertificates(String clusterName) {
+        KeystoreManager entraCertGen = new KeystoreManager();
+        String domain = clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + deploymentNamespace + Constants.SVC_CLUSTER_LOCAL;
+        String ipAddress = DeploymentUtils.getNodeIP();
+        CertificateBuilder certificateBuilder = entraCertGen.newCertificateBuilder(entraCertGen.buildDistinguishedName("test@kroxylicious.io", domain, "Engineering",
+                        "Kroxylicious.io", null, null, "US"))
+                .addSanIpAddress(ipAddress)
+                .addSanDnsName(domain);
+        X509Bundle bundle;
+        try {
+            bundle = entraCertGen.createSelfSignedCertificate(certificateBuilder);
+        }
+        catch (Exception e) {
+            throw new UncheckedException(e);
+        }
+        return bundle.getCertificatePEM();
     }
 
     /**
