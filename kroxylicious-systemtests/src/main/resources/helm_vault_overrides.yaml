@@ -16,6 +16,7 @@ server:
   updateStrategyType: RollingUpdate
   service:
     type: NodePort
+  # Workaround for Vault 2.x in rootless containers (IPC_LOCK capability unavailable). Acceptable for development/testing.
   statefulSet:
     securityContext:
       container:

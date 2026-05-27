@@ -22,7 +22,7 @@ import static io.kroxylicious.systemtests.k8s.KubeClusterResource.kubeClient;
 public class MockOauthServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(MockOauthServer.class);
     private static final String MOCK_OAUTH_SERVER_DEFAULT_NAMESPACE = "lowkey-vault";
-    private static final String MOCK_OAUTH_SERVER_IMAGE = "ghcr.io/navikt/mock-oauth2-server:3.0.3@sha256:876229d27fc99d7b1ab00dcd64a59a8c10826a6260b68f042558d83a0323dfb7";
+    private static final String MOCK_OAUTH_SERVER_IMAGE = "ghcr.io/navikt/mock-oauth2-server:4.0.0@sha256:79f51f412caddb1e2120a5ae10d1f203e134f6e8328f1bc63c444acba33c9086";
     private final String deploymentNamespace;
     private static final String TENANT_ID = "tenant2";
 
@@ -54,11 +54,11 @@ public class MockOauthServer {
         LOGGER.info("Deploy Mock Oauth Server in {} namespace", deploymentNamespace);
 
         NamespaceUtils.createNamespaceAndPrepare(deploymentNamespace);
-        ResourceManager.getInstance().createResourceFromBuilderWithWait(
+        ResourceManager.getInstance().createOrUpdateResourceFromBuilderWithWait(
                 LowkeyVaultTemplates.defaultMockOauthServerService(deploymentNamespace));
-        ResourceManager.getInstance().createResourceFromBuilderWithWait(
+        ResourceManager.getInstance().createOrUpdateResourceFromBuilderWithWait(
                 LowkeyVaultTemplates.defaultMockOauthServerClusterIPService(deploymentNamespace));
-        ResourceManager.getInstance().createResourceFromBuilderWithWait(
+        ResourceManager.getInstance().createOrUpdateResourceFromBuilderWithWait(
                 LowkeyVaultTemplates.defaultMockOauthServerDeployment(MOCK_OAUTH_SERVER_IMAGE, deploymentNamespace));
     }
 
