@@ -9,7 +9,6 @@ package io.kroxylicious.systemtests;
 import java.time.Duration;
 import java.util.List;
 
-import org.apache.commons.lang3.exception.UncheckedException;
 import org.apache.kafka.common.record.CompressionType;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -21,8 +20,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.fabric8.kubernetes.api.model.Pod;
-import io.netty.pkitesting.CertificateBuilder;
-import io.netty.pkitesting.X509Bundle;
 
 import io.kroxylicious.kubernetes.api.v1alpha1.kafkaservicespec.Tls;
 import io.kroxylicious.systemtests.clients.KafkaClients;
@@ -38,10 +35,8 @@ import io.kroxylicious.systemtests.templates.kroxylicious.KroxyliciousKafkaProxy
 import io.kroxylicious.systemtests.templates.kroxylicious.KroxyliciousVirtualKafkaClusterTemplates;
 import io.kroxylicious.systemtests.templates.strimzi.KafkaNodePoolTemplates;
 import io.kroxylicious.systemtests.templates.strimzi.KafkaTemplates;
-import io.kroxylicious.systemtests.utils.DeploymentUtils;
 import io.kroxylicious.systemtests.utils.KroxyliciousUtils;
 import io.kroxylicious.systemtests.utils.NamespaceUtils;
-import io.kroxylicious.testing.kafka.common.KeystoreManager;
 
 import static io.kroxylicious.systemtests.k8s.KubeClusterResource.kubeClient;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -278,25 +273,24 @@ class KroxyliciousST extends AbstractSystemTests {
         int numberOfMessages = 1;
         certManager = new CertManager();
         certManager.deploy();
-        var issuer = certManager.issuer(namespace);
-        var cert = certManager.certFor(namespace, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
-                clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
-                "broker0." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
-                "broker1." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL,
-                "broker2." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + namespace + Constants.SVC_CLUSTER_LOCAL);
+        var issuer = certManager.issuer(Constants.KROXYLICIOUS_NAMESPACE);
+        var cert = certManager.certFor(Constants.KROXYLICIOUS_NAMESPACE, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL,
+                clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL,
+                "broker0." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL,
+                "broker1." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL,
+                "broker2." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL);
 
         resourceManager.createOrUpdateResourceFromBuilderWithWait(issuer, cert);
 
         // start Kroxylicious
         var tls = KroxyliciousUtils.tlsConfigFromCert(Constants.KROXYLICIOUS_SERVER_CERTIFICATE_NAME);
-        String certificate = installCertificates(clusterName);
+        String certificate = KroxyliciousUtils.installCertificates(Constants.KROXYLICIOUS_NAMESPACE, clusterName, Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER);
         resourceManager.createOrUpdateResourceFromBuilderWithWait(
                 KroxyliciousConfigMapTemplates.getClusterCaConfigMap(Constants.KROXYLICIOUS_NAMESPACE, Constants.KROXYLICIOUS_TLS_CLIENT_CA_CERT, certificate));
         LOGGER.atInfo().setMessage("Given Kroxylicious in {} namespace with {} replicas").addArgument(namespace).addArgument(1).log();
         kroxylicious = KroxyliciousBuilder.singleNodeBaseBuilder(Constants.KROXYLICIOUS_NAMESPACE, clusterName, 1)
                 .withDownstreamTls(tls)
-                .withKafkaProxyIngress(KroxyliciousKafkaProxyIngressTemplates.kafkaProxyIngressLoadBalancerCR(Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER,
-                        Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME,
+                .withKafkaProxyIngress(KroxyliciousKafkaProxyIngressTemplates.kafkaProxyIngressLoadBalancerCR(
                         clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL)
                         .build())
                 .withVirtualKafkaCluster(KroxyliciousVirtualKafkaClusterTemplates
@@ -319,24 +313,6 @@ class KroxyliciousST extends AbstractSystemTests {
                 .extracting(ConsumerRecord::getPayload)
                 .hasSize(numberOfMessages)
                 .allSatisfy(v -> assertThat(v).contains(MESSAGE));
-    }
-
-    private String installCertificates(String clusterName) {
-        KeystoreManager entraCertGen = new KeystoreManager();
-        String domain = clusterName + "." + Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER + "." + Constants.KROXYLICIOUS_NAMESPACE + Constants.SVC_CLUSTER_LOCAL;
-        String ipAddress = DeploymentUtils.getNodeIP();
-        CertificateBuilder certificateBuilder = entraCertGen.newCertificateBuilder(entraCertGen.buildDistinguishedName("test@kroxylicious.io", domain, "Engineering",
-                "Kroxylicious.io", null, null, "US"))
-                .addSanIpAddress(ipAddress)
-                .addSanDnsName(domain);
-        X509Bundle bundle;
-        try {
-            bundle = entraCertGen.createSelfSignedCertificate(certificateBuilder);
-        }
-        catch (Exception e) {
-            throw new UncheckedException(e);
-        }
-        return bundle.getCertificatePEM();
     }
 
     @AfterEach

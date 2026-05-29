@@ -68,7 +68,7 @@ public class Kroxylicious {
         if (namespace != null) {
             kafkaProxyIngress = kafkaProxyIngress.edit().editMetadata().withNamespace(namespace).endMetadata().build();
         }
-        if (downstreamTls != null) {
+        if (downstreamTls != null && kafkaProxyIngress.getSpec().getClusterIP() != null) {
             kafkaProxyIngress = kafkaProxyIngress.edit().editSpec().editOrNewClusterIP().withProtocol(TLS).endClusterIP().endSpec().build();
         }
         this.kafkaProxyIngress = kafkaProxyIngress;

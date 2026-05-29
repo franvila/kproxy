@@ -6,6 +6,8 @@
 
 package io.kroxylicious.systemtests.utils;
 
+import io.netty.pkitesting.CertificateBuilder;
+import io.netty.pkitesting.X509Bundle;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerStatus;
 
 import io.kroxylicious.kubernetes.api.common.TrustAnchorRef;
@@ -15,6 +17,7 @@ import io.kroxylicious.kubernetes.api.v1alpha1.kafkaservicespec.TlsBuilder;
 import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.resources.manager.ResourceManager;
 import io.kroxylicious.systemtests.templates.kroxylicious.KroxyliciousConfigMapTemplates;
+import io.kroxylicious.testing.kafka.common.KeystoreManager;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
 
@@ -79,5 +82,30 @@ public class KroxyliciousUtils {
         }
         tlsBuilder.withTrustAnchorRef(buildTrustAnchorRef());
         return tlsBuilder.build();
+    }
+
+    /**
+     * Install certificates in the corresponding namespace
+     * @param namespace the namespace
+     * @param clusterName the cluster name
+     * @param deploymentName the name of the deployment
+     * @return the certificate PEM
+     */
+    public static String installCertificates(String namespace, String clusterName, String deploymentName) {
+        KeystoreManager entraCertGen = new KeystoreManager();
+        String domain = clusterName + "." + deploymentName + "." + namespace + Constants.SVC_CLUSTER_LOCAL;
+        String ipAddress = DeploymentUtils.getNodeIP();
+        CertificateBuilder certificateBuilder = entraCertGen.newCertificateBuilder(entraCertGen.buildDistinguishedName("test@kroxylicious.io", domain, "Engineering",
+                "Kroxylicious.io", null, null, "US"))
+                .addSanIpAddress(ipAddress)
+                .addSanDnsName(domain);
+        X509Bundle bundle;
+        try {
+            bundle = entraCertGen.createSelfSignedCertificate(certificateBuilder);
+        }
+        catch (Exception e) {
+            throw new IllegalStateException("Failed to create self-signed certificate", e);
+        }
+        return bundle.getCertificatePEM();
     }
 }

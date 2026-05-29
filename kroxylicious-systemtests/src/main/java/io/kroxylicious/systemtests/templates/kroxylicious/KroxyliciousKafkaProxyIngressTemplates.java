@@ -38,11 +38,11 @@ public class KroxyliciousKafkaProxyIngressTemplates {
         // @formatter:on
     }
 
-    public static KafkaProxyIngressBuilder kafkaProxyIngressLoadBalancerCR(String ingressName, String proxyName, String dnsName) {
+    public static KafkaProxyIngressBuilder kafkaProxyIngressLoadBalancerCR(String dnsName) {
         // @formatter:off
         return new KafkaProxyIngressBuilder()
                 .withNewMetadata()
-                    .withName(ingressName)
+                    .withName(Constants.KROXYLICIOUS_INGRESS_LOAD_BALANCER)
                 .endMetadata()
                 .withNewSpec()
                     .withNewLoadBalancer()
@@ -50,7 +50,7 @@ public class KroxyliciousKafkaProxyIngressTemplates {
                         .withAdvertisedBrokerAddressPattern("broker$(nodeId).$(virtualClusterName)." + dnsName)
                     .endLoadBalancer()
                     .withNewProxyRef()
-                        .withName(proxyName)
+                        .withName(Constants.KROXYLICIOUS_PROXY_SIMPLE_NAME)
                     .endProxyRef()
                 .endSpec();
         // @formatter:on
