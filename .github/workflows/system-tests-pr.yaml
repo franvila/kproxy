@@ -70,12 +70,10 @@ jobs:
 
   build_artifacts:
     needs: changes
-    if: ${{ needs.changes.outputs.systemtest == 'true' }}
     uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
 
   set_variables:
     needs: changes
-    if: ${{ needs.changes.outputs.systemtest == 'true' }}
     runs-on: ubuntu-latest
     outputs:
       kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
