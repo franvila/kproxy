@@ -38,7 +38,7 @@ on:
         default: 'false'
         required: false
         type: string
-      skipSystemTestsRun:
+      skipSystemTestRun:
         description: "Skip system tests run"
         required: false
         default: 'false'
