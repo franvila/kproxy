@@ -19,11 +19,20 @@ import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxy;
 import io.kroxylicious.kubernetes.api.v1alpha1.VirtualKafkaCluster;
 import io.kroxylicious.kubernetes.operator.ResourcesUtil;
 
+import static io.kroxylicious.kubernetes.operator.ResourcesUtil.findAllKnownPrimariesInNamespace;
+
+/**
+ * Maps VirtualKafkaCluster secondary resource events to their associated KafkaProxy primary resources for reconciliation.
+ */
 public class VirtualKafkaClusterSecondaryToKafkaProxyPrimaryMapper implements SecondaryToPrimaryMapper<VirtualKafkaCluster> {
     private static final Logger LOGGER = LoggerFactory.getLogger(VirtualKafkaClusterSecondaryToKafkaProxyPrimaryMapper.class);
 
     private final EventSourceContext<KafkaProxy> context;
 
+    /**
+     * Constructs the mapper with the given event source context.
+     * @param context the event source context for accessing known KafkaProxy primaries
+     */
     public VirtualKafkaClusterSecondaryToKafkaProxyPrimaryMapper(EventSourceContext<KafkaProxy> context) {
         this.context = context;
     }
@@ -39,7 +48,7 @@ public class VirtualKafkaClusterSecondaryToKafkaProxyPrimaryMapper implements Se
         }
         // we need to reconcile all proxies when a virtual kafka cluster changes in case the proxyRef is updated, we need to update
         // the previously referenced proxy too.
-        Set<ResourceID> proxyIds = ResourcesUtil.filteredResourceIdsInSameNamespace(context, cluster, KafkaProxy.class, proxy -> true);
+        Set<ResourceID> proxyIds = findAllKnownPrimariesInNamespace(context, cluster);
         LOGGER.atDebug()
                 .addKeyValue("proxyIds", proxyIds)
                 .log("Event source VirtualKafkaCluster SecondaryToPrimaryMapper");

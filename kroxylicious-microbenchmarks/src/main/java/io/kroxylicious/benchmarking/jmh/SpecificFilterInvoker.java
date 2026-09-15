@@ -8,139 +8,138 @@ package io.kroxylicious.benchmarking.jmh;
 
 import java.util.concurrent.CompletionStage;
 
-import org.apache.kafka.common.message.AddOffsetsToTxnRequestData;
-import org.apache.kafka.common.message.AddOffsetsToTxnResponseData;
-import org.apache.kafka.common.message.AddPartitionsToTxnRequestData;
-import org.apache.kafka.common.message.AddPartitionsToTxnResponseData;
-import org.apache.kafka.common.message.AllocateProducerIdsRequestData;
-import org.apache.kafka.common.message.AllocateProducerIdsResponseData;
-import org.apache.kafka.common.message.AlterClientQuotasRequestData;
-import org.apache.kafka.common.message.AlterClientQuotasResponseData;
-import org.apache.kafka.common.message.AlterConfigsRequestData;
-import org.apache.kafka.common.message.AlterConfigsResponseData;
-import org.apache.kafka.common.message.AlterPartitionReassignmentsRequestData;
-import org.apache.kafka.common.message.AlterPartitionReassignmentsResponseData;
-import org.apache.kafka.common.message.AlterPartitionRequestData;
-import org.apache.kafka.common.message.AlterPartitionResponseData;
-import org.apache.kafka.common.message.AlterReplicaLogDirsRequestData;
-import org.apache.kafka.common.message.AlterReplicaLogDirsResponseData;
-import org.apache.kafka.common.message.AlterUserScramCredentialsRequestData;
-import org.apache.kafka.common.message.AlterUserScramCredentialsResponseData;
-import org.apache.kafka.common.message.ApiVersionsRequestData;
-import org.apache.kafka.common.message.ApiVersionsResponseData;
-import org.apache.kafka.common.message.BeginQuorumEpochRequestData;
-import org.apache.kafka.common.message.BeginQuorumEpochResponseData;
-import org.apache.kafka.common.message.BrokerHeartbeatRequestData;
-import org.apache.kafka.common.message.BrokerHeartbeatResponseData;
-import org.apache.kafka.common.message.BrokerRegistrationRequestData;
-import org.apache.kafka.common.message.BrokerRegistrationResponseData;
-import org.apache.kafka.common.message.CreateAclsRequestData;
-import org.apache.kafka.common.message.CreateAclsResponseData;
-import org.apache.kafka.common.message.CreateDelegationTokenRequestData;
-import org.apache.kafka.common.message.CreateDelegationTokenResponseData;
-import org.apache.kafka.common.message.CreatePartitionsRequestData;
-import org.apache.kafka.common.message.CreatePartitionsResponseData;
-import org.apache.kafka.common.message.CreateTopicsRequestData;
-import org.apache.kafka.common.message.CreateTopicsResponseData;
-import org.apache.kafka.common.message.DeleteAclsRequestData;
-import org.apache.kafka.common.message.DeleteAclsResponseData;
-import org.apache.kafka.common.message.DeleteGroupsRequestData;
-import org.apache.kafka.common.message.DeleteGroupsResponseData;
-import org.apache.kafka.common.message.DeleteRecordsRequestData;
-import org.apache.kafka.common.message.DeleteRecordsResponseData;
-import org.apache.kafka.common.message.DeleteTopicsRequestData;
-import org.apache.kafka.common.message.DeleteTopicsResponseData;
-import org.apache.kafka.common.message.DescribeAclsRequestData;
-import org.apache.kafka.common.message.DescribeAclsResponseData;
-import org.apache.kafka.common.message.DescribeClientQuotasRequestData;
-import org.apache.kafka.common.message.DescribeClientQuotasResponseData;
-import org.apache.kafka.common.message.DescribeClusterRequestData;
-import org.apache.kafka.common.message.DescribeClusterResponseData;
-import org.apache.kafka.common.message.DescribeConfigsRequestData;
-import org.apache.kafka.common.message.DescribeConfigsResponseData;
-import org.apache.kafka.common.message.DescribeDelegationTokenRequestData;
-import org.apache.kafka.common.message.DescribeDelegationTokenResponseData;
-import org.apache.kafka.common.message.DescribeGroupsRequestData;
-import org.apache.kafka.common.message.DescribeGroupsResponseData;
-import org.apache.kafka.common.message.DescribeLogDirsRequestData;
-import org.apache.kafka.common.message.DescribeLogDirsResponseData;
-import org.apache.kafka.common.message.DescribeProducersRequestData;
-import org.apache.kafka.common.message.DescribeProducersResponseData;
-import org.apache.kafka.common.message.DescribeQuorumRequestData;
-import org.apache.kafka.common.message.DescribeQuorumResponseData;
-import org.apache.kafka.common.message.DescribeTransactionsRequestData;
-import org.apache.kafka.common.message.DescribeTransactionsResponseData;
-import org.apache.kafka.common.message.DescribeUserScramCredentialsRequestData;
-import org.apache.kafka.common.message.DescribeUserScramCredentialsResponseData;
-import org.apache.kafka.common.message.ElectLeadersRequestData;
-import org.apache.kafka.common.message.ElectLeadersResponseData;
-import org.apache.kafka.common.message.EndQuorumEpochRequestData;
-import org.apache.kafka.common.message.EndQuorumEpochResponseData;
-import org.apache.kafka.common.message.EndTxnRequestData;
-import org.apache.kafka.common.message.EndTxnResponseData;
-import org.apache.kafka.common.message.EnvelopeRequestData;
-import org.apache.kafka.common.message.EnvelopeResponseData;
-import org.apache.kafka.common.message.ExpireDelegationTokenRequestData;
-import org.apache.kafka.common.message.ExpireDelegationTokenResponseData;
-import org.apache.kafka.common.message.FetchRequestData;
-import org.apache.kafka.common.message.FetchResponseData;
-import org.apache.kafka.common.message.FetchSnapshotRequestData;
-import org.apache.kafka.common.message.FetchSnapshotResponseData;
-import org.apache.kafka.common.message.FindCoordinatorRequestData;
-import org.apache.kafka.common.message.FindCoordinatorResponseData;
-import org.apache.kafka.common.message.HeartbeatRequestData;
-import org.apache.kafka.common.message.HeartbeatResponseData;
-import org.apache.kafka.common.message.IncrementalAlterConfigsRequestData;
-import org.apache.kafka.common.message.IncrementalAlterConfigsResponseData;
-import org.apache.kafka.common.message.InitProducerIdRequestData;
-import org.apache.kafka.common.message.InitProducerIdResponseData;
-import org.apache.kafka.common.message.JoinGroupRequestData;
-import org.apache.kafka.common.message.JoinGroupResponseData;
-import org.apache.kafka.common.message.LeaveGroupRequestData;
-import org.apache.kafka.common.message.LeaveGroupResponseData;
-import org.apache.kafka.common.message.ListGroupsRequestData;
-import org.apache.kafka.common.message.ListGroupsResponseData;
-import org.apache.kafka.common.message.ListOffsetsRequestData;
-import org.apache.kafka.common.message.ListOffsetsResponseData;
-import org.apache.kafka.common.message.ListPartitionReassignmentsRequestData;
-import org.apache.kafka.common.message.ListPartitionReassignmentsResponseData;
-import org.apache.kafka.common.message.ListTransactionsRequestData;
-import org.apache.kafka.common.message.ListTransactionsResponseData;
-import org.apache.kafka.common.message.MetadataRequestData;
-import org.apache.kafka.common.message.MetadataResponseData;
-import org.apache.kafka.common.message.OffsetCommitRequestData;
-import org.apache.kafka.common.message.OffsetCommitResponseData;
-import org.apache.kafka.common.message.OffsetDeleteRequestData;
-import org.apache.kafka.common.message.OffsetDeleteResponseData;
-import org.apache.kafka.common.message.OffsetFetchRequestData;
-import org.apache.kafka.common.message.OffsetFetchResponseData;
-import org.apache.kafka.common.message.OffsetForLeaderEpochRequestData;
-import org.apache.kafka.common.message.OffsetForLeaderEpochResponseData;
-import org.apache.kafka.common.message.ProduceRequestData;
-import org.apache.kafka.common.message.ProduceResponseData;
-import org.apache.kafka.common.message.RenewDelegationTokenRequestData;
-import org.apache.kafka.common.message.RenewDelegationTokenResponseData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.message.SaslAuthenticateRequestData;
-import org.apache.kafka.common.message.SaslAuthenticateResponseData;
-import org.apache.kafka.common.message.SaslHandshakeRequestData;
-import org.apache.kafka.common.message.SaslHandshakeResponseData;
-import org.apache.kafka.common.message.SyncGroupRequestData;
-import org.apache.kafka.common.message.SyncGroupResponseData;
-import org.apache.kafka.common.message.TxnOffsetCommitRequestData;
-import org.apache.kafka.common.message.TxnOffsetCommitResponseData;
-import org.apache.kafka.common.message.UnregisterBrokerRequestData;
-import org.apache.kafka.common.message.UnregisterBrokerResponseData;
-import org.apache.kafka.common.message.UpdateFeaturesRequestData;
-import org.apache.kafka.common.message.UpdateFeaturesResponseData;
-import org.apache.kafka.common.message.VoteRequestData;
-import org.apache.kafka.common.message.VoteResponseData;
-import org.apache.kafka.common.message.WriteTxnMarkersRequestData;
-import org.apache.kafka.common.message.WriteTxnMarkersResponseData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
-
+import io.kroxylicious.kafka.common.message.AddOffsetsToTxnRequestData;
+import io.kroxylicious.kafka.common.message.AddOffsetsToTxnResponseData;
+import io.kroxylicious.kafka.common.message.AddPartitionsToTxnRequestData;
+import io.kroxylicious.kafka.common.message.AddPartitionsToTxnResponseData;
+import io.kroxylicious.kafka.common.message.AllocateProducerIdsRequestData;
+import io.kroxylicious.kafka.common.message.AllocateProducerIdsResponseData;
+import io.kroxylicious.kafka.common.message.AlterClientQuotasRequestData;
+import io.kroxylicious.kafka.common.message.AlterClientQuotasResponseData;
+import io.kroxylicious.kafka.common.message.AlterConfigsRequestData;
+import io.kroxylicious.kafka.common.message.AlterConfigsResponseData;
+import io.kroxylicious.kafka.common.message.AlterPartitionReassignmentsRequestData;
+import io.kroxylicious.kafka.common.message.AlterPartitionReassignmentsResponseData;
+import io.kroxylicious.kafka.common.message.AlterPartitionRequestData;
+import io.kroxylicious.kafka.common.message.AlterPartitionResponseData;
+import io.kroxylicious.kafka.common.message.AlterReplicaLogDirsRequestData;
+import io.kroxylicious.kafka.common.message.AlterReplicaLogDirsResponseData;
+import io.kroxylicious.kafka.common.message.AlterUserScramCredentialsRequestData;
+import io.kroxylicious.kafka.common.message.AlterUserScramCredentialsResponseData;
+import io.kroxylicious.kafka.common.message.ApiVersionsRequestData;
+import io.kroxylicious.kafka.common.message.ApiVersionsResponseData;
+import io.kroxylicious.kafka.common.message.BeginQuorumEpochRequestData;
+import io.kroxylicious.kafka.common.message.BeginQuorumEpochResponseData;
+import io.kroxylicious.kafka.common.message.BrokerHeartbeatRequestData;
+import io.kroxylicious.kafka.common.message.BrokerHeartbeatResponseData;
+import io.kroxylicious.kafka.common.message.BrokerRegistrationRequestData;
+import io.kroxylicious.kafka.common.message.BrokerRegistrationResponseData;
+import io.kroxylicious.kafka.common.message.CreateAclsRequestData;
+import io.kroxylicious.kafka.common.message.CreateAclsResponseData;
+import io.kroxylicious.kafka.common.message.CreateDelegationTokenRequestData;
+import io.kroxylicious.kafka.common.message.CreateDelegationTokenResponseData;
+import io.kroxylicious.kafka.common.message.CreatePartitionsRequestData;
+import io.kroxylicious.kafka.common.message.CreatePartitionsResponseData;
+import io.kroxylicious.kafka.common.message.CreateTopicsRequestData;
+import io.kroxylicious.kafka.common.message.CreateTopicsResponseData;
+import io.kroxylicious.kafka.common.message.DeleteAclsRequestData;
+import io.kroxylicious.kafka.common.message.DeleteAclsResponseData;
+import io.kroxylicious.kafka.common.message.DeleteGroupsRequestData;
+import io.kroxylicious.kafka.common.message.DeleteGroupsResponseData;
+import io.kroxylicious.kafka.common.message.DeleteRecordsRequestData;
+import io.kroxylicious.kafka.common.message.DeleteRecordsResponseData;
+import io.kroxylicious.kafka.common.message.DeleteTopicsRequestData;
+import io.kroxylicious.kafka.common.message.DeleteTopicsResponseData;
+import io.kroxylicious.kafka.common.message.DescribeAclsRequestData;
+import io.kroxylicious.kafka.common.message.DescribeAclsResponseData;
+import io.kroxylicious.kafka.common.message.DescribeClientQuotasRequestData;
+import io.kroxylicious.kafka.common.message.DescribeClientQuotasResponseData;
+import io.kroxylicious.kafka.common.message.DescribeClusterRequestData;
+import io.kroxylicious.kafka.common.message.DescribeClusterResponseData;
+import io.kroxylicious.kafka.common.message.DescribeConfigsRequestData;
+import io.kroxylicious.kafka.common.message.DescribeConfigsResponseData;
+import io.kroxylicious.kafka.common.message.DescribeDelegationTokenRequestData;
+import io.kroxylicious.kafka.common.message.DescribeDelegationTokenResponseData;
+import io.kroxylicious.kafka.common.message.DescribeGroupsRequestData;
+import io.kroxylicious.kafka.common.message.DescribeGroupsResponseData;
+import io.kroxylicious.kafka.common.message.DescribeLogDirsRequestData;
+import io.kroxylicious.kafka.common.message.DescribeLogDirsResponseData;
+import io.kroxylicious.kafka.common.message.DescribeProducersRequestData;
+import io.kroxylicious.kafka.common.message.DescribeProducersResponseData;
+import io.kroxylicious.kafka.common.message.DescribeQuorumRequestData;
+import io.kroxylicious.kafka.common.message.DescribeQuorumResponseData;
+import io.kroxylicious.kafka.common.message.DescribeTransactionsRequestData;
+import io.kroxylicious.kafka.common.message.DescribeTransactionsResponseData;
+import io.kroxylicious.kafka.common.message.DescribeUserScramCredentialsRequestData;
+import io.kroxylicious.kafka.common.message.DescribeUserScramCredentialsResponseData;
+import io.kroxylicious.kafka.common.message.ElectLeadersRequestData;
+import io.kroxylicious.kafka.common.message.ElectLeadersResponseData;
+import io.kroxylicious.kafka.common.message.EndQuorumEpochRequestData;
+import io.kroxylicious.kafka.common.message.EndQuorumEpochResponseData;
+import io.kroxylicious.kafka.common.message.EndTxnRequestData;
+import io.kroxylicious.kafka.common.message.EndTxnResponseData;
+import io.kroxylicious.kafka.common.message.EnvelopeRequestData;
+import io.kroxylicious.kafka.common.message.EnvelopeResponseData;
+import io.kroxylicious.kafka.common.message.ExpireDelegationTokenRequestData;
+import io.kroxylicious.kafka.common.message.ExpireDelegationTokenResponseData;
+import io.kroxylicious.kafka.common.message.FetchRequestData;
+import io.kroxylicious.kafka.common.message.FetchResponseData;
+import io.kroxylicious.kafka.common.message.FetchSnapshotRequestData;
+import io.kroxylicious.kafka.common.message.FetchSnapshotResponseData;
+import io.kroxylicious.kafka.common.message.FindCoordinatorRequestData;
+import io.kroxylicious.kafka.common.message.FindCoordinatorResponseData;
+import io.kroxylicious.kafka.common.message.HeartbeatRequestData;
+import io.kroxylicious.kafka.common.message.HeartbeatResponseData;
+import io.kroxylicious.kafka.common.message.IncrementalAlterConfigsRequestData;
+import io.kroxylicious.kafka.common.message.IncrementalAlterConfigsResponseData;
+import io.kroxylicious.kafka.common.message.InitProducerIdRequestData;
+import io.kroxylicious.kafka.common.message.InitProducerIdResponseData;
+import io.kroxylicious.kafka.common.message.JoinGroupRequestData;
+import io.kroxylicious.kafka.common.message.JoinGroupResponseData;
+import io.kroxylicious.kafka.common.message.LeaveGroupRequestData;
+import io.kroxylicious.kafka.common.message.LeaveGroupResponseData;
+import io.kroxylicious.kafka.common.message.ListGroupsRequestData;
+import io.kroxylicious.kafka.common.message.ListGroupsResponseData;
+import io.kroxylicious.kafka.common.message.ListOffsetsRequestData;
+import io.kroxylicious.kafka.common.message.ListOffsetsResponseData;
+import io.kroxylicious.kafka.common.message.ListPartitionReassignmentsRequestData;
+import io.kroxylicious.kafka.common.message.ListPartitionReassignmentsResponseData;
+import io.kroxylicious.kafka.common.message.ListTransactionsRequestData;
+import io.kroxylicious.kafka.common.message.ListTransactionsResponseData;
+import io.kroxylicious.kafka.common.message.MetadataRequestData;
+import io.kroxylicious.kafka.common.message.MetadataResponseData;
+import io.kroxylicious.kafka.common.message.OffsetCommitRequestData;
+import io.kroxylicious.kafka.common.message.OffsetCommitResponseData;
+import io.kroxylicious.kafka.common.message.OffsetDeleteRequestData;
+import io.kroxylicious.kafka.common.message.OffsetDeleteResponseData;
+import io.kroxylicious.kafka.common.message.OffsetFetchRequestData;
+import io.kroxylicious.kafka.common.message.OffsetFetchResponseData;
+import io.kroxylicious.kafka.common.message.OffsetForLeaderEpochRequestData;
+import io.kroxylicious.kafka.common.message.OffsetForLeaderEpochResponseData;
+import io.kroxylicious.kafka.common.message.ProduceRequestData;
+import io.kroxylicious.kafka.common.message.ProduceResponseData;
+import io.kroxylicious.kafka.common.message.RenewDelegationTokenRequestData;
+import io.kroxylicious.kafka.common.message.RenewDelegationTokenResponseData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateRequestData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateResponseData;
+import io.kroxylicious.kafka.common.message.SaslHandshakeRequestData;
+import io.kroxylicious.kafka.common.message.SaslHandshakeResponseData;
+import io.kroxylicious.kafka.common.message.SyncGroupRequestData;
+import io.kroxylicious.kafka.common.message.SyncGroupResponseData;
+import io.kroxylicious.kafka.common.message.TxnOffsetCommitRequestData;
+import io.kroxylicious.kafka.common.message.TxnOffsetCommitResponseData;
+import io.kroxylicious.kafka.common.message.UnregisterBrokerRequestData;
+import io.kroxylicious.kafka.common.message.UnregisterBrokerResponseData;
+import io.kroxylicious.kafka.common.message.UpdateFeaturesRequestData;
+import io.kroxylicious.kafka.common.message.UpdateFeaturesResponseData;
+import io.kroxylicious.kafka.common.message.VoteRequestData;
+import io.kroxylicious.kafka.common.message.VoteResponseData;
+import io.kroxylicious.kafka.common.message.WriteTxnMarkersRequestData;
+import io.kroxylicious.kafka.common.message.WriteTxnMarkersResponseData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 import io.kroxylicious.proxy.filter.AddOffsetsToTxnRequestFilter;
 import io.kroxylicious.proxy.filter.AddOffsetsToTxnResponseFilter;
 import io.kroxylicious.proxy.filter.AddPartitionsToTxnRequestFilter;
@@ -551,103 +550,121 @@ public class SpecificFilterInvoker implements FilterInvoker {
     @Override
     public boolean shouldHandleRequest(ApiKeys apiKey, short apiVersion) {
         return switch (apiKey) {
-            case ADD_OFFSETS_TO_TXN -> filter instanceof AddOffsetsToTxnRequestFilter
-                    && ((AddOffsetsToTxnRequestFilter) filter).shouldHandleAddOffsetsToTxnRequest(apiVersion);
-            case ADD_PARTITIONS_TO_TXN -> filter instanceof AddPartitionsToTxnRequestFilter
-                    && ((AddPartitionsToTxnRequestFilter) filter).shouldHandleAddPartitionsToTxnRequest(apiVersion);
-            case ALLOCATE_PRODUCER_IDS -> filter instanceof AllocateProducerIdsRequestFilter
-                    && ((AllocateProducerIdsRequestFilter) filter).shouldHandleAllocateProducerIdsRequest(apiVersion);
-            case ALTER_CLIENT_QUOTAS -> filter instanceof AlterClientQuotasRequestFilter
-                    && ((AlterClientQuotasRequestFilter) filter).shouldHandleAlterClientQuotasRequest(apiVersion);
-            case ALTER_CONFIGS -> filter instanceof AlterConfigsRequestFilter && ((AlterConfigsRequestFilter) filter).shouldHandleAlterConfigsRequest(apiVersion);
-            case ALTER_PARTITION_REASSIGNMENTS -> filter instanceof AlterPartitionReassignmentsRequestFilter
-                    && ((AlterPartitionReassignmentsRequestFilter) filter).shouldHandleAlterPartitionReassignmentsRequest(apiVersion);
-            case ALTER_PARTITION -> filter instanceof AlterPartitionRequestFilter && ((AlterPartitionRequestFilter) filter).shouldHandleAlterPartitionRequest(apiVersion);
-            case ALTER_REPLICA_LOG_DIRS -> filter instanceof AlterReplicaLogDirsRequestFilter
-                    && ((AlterReplicaLogDirsRequestFilter) filter).shouldHandleAlterReplicaLogDirsRequest(apiVersion);
-            case ALTER_USER_SCRAM_CREDENTIALS -> filter instanceof AlterUserScramCredentialsRequestFilter
-                    && ((AlterUserScramCredentialsRequestFilter) filter).shouldHandleAlterUserScramCredentialsRequest(apiVersion);
-            case API_VERSIONS -> filter instanceof ApiVersionsRequestFilter && ((ApiVersionsRequestFilter) filter).shouldHandleApiVersionsRequest(apiVersion);
-            case BEGIN_QUORUM_EPOCH -> filter instanceof BeginQuorumEpochRequestFilter
-                    && ((BeginQuorumEpochRequestFilter) filter).shouldHandleBeginQuorumEpochRequest(apiVersion);
-            case BROKER_HEARTBEAT -> filter instanceof BrokerHeartbeatRequestFilter
-                    && ((BrokerHeartbeatRequestFilter) filter).shouldHandleBrokerHeartbeatRequest(apiVersion);
-            case BROKER_REGISTRATION -> filter instanceof BrokerRegistrationRequestFilter
-                    && ((BrokerRegistrationRequestFilter) filter).shouldHandleBrokerRegistrationRequest(apiVersion);
-            case CREATE_ACLS -> filter instanceof CreateAclsRequestFilter && ((CreateAclsRequestFilter) filter).shouldHandleCreateAclsRequest(apiVersion);
-            case CREATE_DELEGATION_TOKEN -> filter instanceof CreateDelegationTokenRequestFilter
-                    && ((CreateDelegationTokenRequestFilter) filter).shouldHandleCreateDelegationTokenRequest(apiVersion);
-            case CREATE_PARTITIONS -> filter instanceof CreatePartitionsRequestFilter
-                    && ((CreatePartitionsRequestFilter) filter).shouldHandleCreatePartitionsRequest(apiVersion);
-            case CREATE_TOPICS -> filter instanceof CreateTopicsRequestFilter && ((CreateTopicsRequestFilter) filter).shouldHandleCreateTopicsRequest(apiVersion);
-            case DELETE_ACLS -> filter instanceof DeleteAclsRequestFilter && ((DeleteAclsRequestFilter) filter).shouldHandleDeleteAclsRequest(apiVersion);
-            case DELETE_GROUPS -> filter instanceof DeleteGroupsRequestFilter && ((DeleteGroupsRequestFilter) filter).shouldHandleDeleteGroupsRequest(apiVersion);
-            case DELETE_RECORDS -> filter instanceof DeleteRecordsRequestFilter && ((DeleteRecordsRequestFilter) filter).shouldHandleDeleteRecordsRequest(apiVersion);
-            case DELETE_TOPICS -> filter instanceof DeleteTopicsRequestFilter && ((DeleteTopicsRequestFilter) filter).shouldHandleDeleteTopicsRequest(apiVersion);
-            case DESCRIBE_ACLS -> filter instanceof DescribeAclsRequestFilter && ((DescribeAclsRequestFilter) filter).shouldHandleDescribeAclsRequest(apiVersion);
-            case DESCRIBE_CLIENT_QUOTAS -> filter instanceof DescribeClientQuotasRequestFilter
-                    && ((DescribeClientQuotasRequestFilter) filter).shouldHandleDescribeClientQuotasRequest(apiVersion);
-            case DESCRIBE_CLUSTER -> filter instanceof DescribeClusterRequestFilter
-                    && ((DescribeClusterRequestFilter) filter).shouldHandleDescribeClusterRequest(apiVersion);
-            case DESCRIBE_CONFIGS -> filter instanceof DescribeConfigsRequestFilter
-                    && ((DescribeConfigsRequestFilter) filter).shouldHandleDescribeConfigsRequest(apiVersion);
-            case DESCRIBE_DELEGATION_TOKEN -> filter instanceof DescribeDelegationTokenRequestFilter
-                    && ((DescribeDelegationTokenRequestFilter) filter).shouldHandleDescribeDelegationTokenRequest(apiVersion);
-            case DESCRIBE_GROUPS -> filter instanceof DescribeGroupsRequestFilter && ((DescribeGroupsRequestFilter) filter).shouldHandleDescribeGroupsRequest(apiVersion);
-            case DESCRIBE_LOG_DIRS -> filter instanceof DescribeLogDirsRequestFilter
-                    && ((DescribeLogDirsRequestFilter) filter).shouldHandleDescribeLogDirsRequest(apiVersion);
-            case DESCRIBE_PRODUCERS -> filter instanceof DescribeProducersRequestFilter
-                    && ((DescribeProducersRequestFilter) filter).shouldHandleDescribeProducersRequest(apiVersion);
-            case DESCRIBE_QUORUM -> filter instanceof DescribeQuorumRequestFilter && ((DescribeQuorumRequestFilter) filter).shouldHandleDescribeQuorumRequest(apiVersion);
-            case DESCRIBE_TRANSACTIONS -> filter instanceof DescribeTransactionsRequestFilter
-                    && ((DescribeTransactionsRequestFilter) filter).shouldHandleDescribeTransactionsRequest(apiVersion);
-            case DESCRIBE_USER_SCRAM_CREDENTIALS -> filter instanceof DescribeUserScramCredentialsRequestFilter
-                    && ((DescribeUserScramCredentialsRequestFilter) filter).shouldHandleDescribeUserScramCredentialsRequest(apiVersion);
-            case ELECT_LEADERS -> filter instanceof ElectLeadersRequestFilter && ((ElectLeadersRequestFilter) filter).shouldHandleElectLeadersRequest(apiVersion);
-            case END_QUORUM_EPOCH -> filter instanceof EndQuorumEpochRequestFilter
-                    && ((EndQuorumEpochRequestFilter) filter).shouldHandleEndQuorumEpochRequest(apiVersion);
-            case END_TXN -> filter instanceof EndTxnRequestFilter && ((EndTxnRequestFilter) filter).shouldHandleEndTxnRequest(apiVersion);
-            case ENVELOPE -> filter instanceof EnvelopeRequestFilter && ((EnvelopeRequestFilter) filter).shouldHandleEnvelopeRequest(apiVersion);
-            case EXPIRE_DELEGATION_TOKEN -> filter instanceof ExpireDelegationTokenRequestFilter
-                    && ((ExpireDelegationTokenRequestFilter) filter).shouldHandleExpireDelegationTokenRequest(apiVersion);
-            case FETCH -> filter instanceof FetchRequestFilter && ((FetchRequestFilter) filter).shouldHandleFetchRequest(apiVersion);
-            case FETCH_SNAPSHOT -> filter instanceof FetchSnapshotRequestFilter && ((FetchSnapshotRequestFilter) filter).shouldHandleFetchSnapshotRequest(apiVersion);
-            case FIND_COORDINATOR -> filter instanceof FindCoordinatorRequestFilter
-                    && ((FindCoordinatorRequestFilter) filter).shouldHandleFindCoordinatorRequest(apiVersion);
-            case HEARTBEAT -> filter instanceof HeartbeatRequestFilter && ((HeartbeatRequestFilter) filter).shouldHandleHeartbeatRequest(apiVersion);
-            case INCREMENTAL_ALTER_CONFIGS -> filter instanceof IncrementalAlterConfigsRequestFilter
-                    && ((IncrementalAlterConfigsRequestFilter) filter).shouldHandleIncrementalAlterConfigsRequest(apiVersion);
-            case INIT_PRODUCER_ID -> filter instanceof InitProducerIdRequestFilter
-                    && ((InitProducerIdRequestFilter) filter).shouldHandleInitProducerIdRequest(apiVersion);
-            case JOIN_GROUP -> filter instanceof JoinGroupRequestFilter && ((JoinGroupRequestFilter) filter).shouldHandleJoinGroupRequest(apiVersion);
-            case LEAVE_GROUP -> filter instanceof LeaveGroupRequestFilter && ((LeaveGroupRequestFilter) filter).shouldHandleLeaveGroupRequest(apiVersion);
-            case LIST_GROUPS -> filter instanceof ListGroupsRequestFilter && ((ListGroupsRequestFilter) filter).shouldHandleListGroupsRequest(apiVersion);
-            case LIST_OFFSETS -> filter instanceof ListOffsetsRequestFilter && ((ListOffsetsRequestFilter) filter).shouldHandleListOffsetsRequest(apiVersion);
-            case LIST_PARTITION_REASSIGNMENTS -> filter instanceof ListPartitionReassignmentsRequestFilter
-                    && ((ListPartitionReassignmentsRequestFilter) filter).shouldHandleListPartitionReassignmentsRequest(apiVersion);
-            case LIST_TRANSACTIONS -> filter instanceof ListTransactionsRequestFilter
-                    && ((ListTransactionsRequestFilter) filter).shouldHandleListTransactionsRequest(apiVersion);
-            case METADATA -> filter instanceof MetadataRequestFilter && ((MetadataRequestFilter) filter).shouldHandleMetadataRequest(apiVersion);
-            case OFFSET_COMMIT -> filter instanceof OffsetCommitRequestFilter && ((OffsetCommitRequestFilter) filter).shouldHandleOffsetCommitRequest(apiVersion);
-            case OFFSET_DELETE -> filter instanceof OffsetDeleteRequestFilter && ((OffsetDeleteRequestFilter) filter).shouldHandleOffsetDeleteRequest(apiVersion);
-            case OFFSET_FETCH -> filter instanceof OffsetFetchRequestFilter && ((OffsetFetchRequestFilter) filter).shouldHandleOffsetFetchRequest(apiVersion);
-            case OFFSET_FOR_LEADER_EPOCH -> filter instanceof OffsetForLeaderEpochRequestFilter
-                    && ((OffsetForLeaderEpochRequestFilter) filter).shouldHandleOffsetForLeaderEpochRequest(apiVersion);
-            case PRODUCE -> filter instanceof ProduceRequestFilter && ((ProduceRequestFilter) filter).shouldHandleProduceRequest(apiVersion);
-            case RENEW_DELEGATION_TOKEN -> filter instanceof RenewDelegationTokenRequestFilter
-                    && ((RenewDelegationTokenRequestFilter) filter).shouldHandleRenewDelegationTokenRequest(apiVersion);
-            case SASL_AUTHENTICATE -> filter instanceof SaslAuthenticateRequestFilter
-                    && ((SaslAuthenticateRequestFilter) filter).shouldHandleSaslAuthenticateRequest(apiVersion);
-            case SASL_HANDSHAKE -> filter instanceof SaslHandshakeRequestFilter && ((SaslHandshakeRequestFilter) filter).shouldHandleSaslHandshakeRequest(apiVersion);
-            case SYNC_GROUP -> filter instanceof SyncGroupRequestFilter && ((SyncGroupRequestFilter) filter).shouldHandleSyncGroupRequest(apiVersion);
-            case TXN_OFFSET_COMMIT -> filter instanceof TxnOffsetCommitRequestFilter
-                    && ((TxnOffsetCommitRequestFilter) filter).shouldHandleTxnOffsetCommitRequest(apiVersion);
-            case UNREGISTER_BROKER -> filter instanceof UnregisterBrokerRequestFilter
-                    && ((UnregisterBrokerRequestFilter) filter).shouldHandleUnregisterBrokerRequest(apiVersion);
-            case UPDATE_FEATURES -> filter instanceof UpdateFeaturesRequestFilter && ((UpdateFeaturesRequestFilter) filter).shouldHandleUpdateFeaturesRequest(apiVersion);
-            case VOTE -> filter instanceof VoteRequestFilter && ((VoteRequestFilter) filter).shouldHandleVoteRequest(apiVersion);
-            case WRITE_TXN_MARKERS -> filter instanceof WriteTxnMarkersRequestFilter
-                    && ((WriteTxnMarkersRequestFilter) filter).shouldHandleWriteTxnMarkersRequest(apiVersion);
+            case ADD_OFFSETS_TO_TXN -> filter instanceof AddOffsetsToTxnRequestFilter addOffsetsToTxnRequestFilter
+                    && addOffsetsToTxnRequestFilter.shouldHandleAddOffsetsToTxnRequest(apiVersion);
+            case ADD_PARTITIONS_TO_TXN -> filter instanceof AddPartitionsToTxnRequestFilter addPartitionsToTxnRequestFilter
+                    && addPartitionsToTxnRequestFilter.shouldHandleAddPartitionsToTxnRequest(apiVersion);
+            case ALLOCATE_PRODUCER_IDS -> filter instanceof AllocateProducerIdsRequestFilter allocateProducerIdsRequestFilter
+                    && allocateProducerIdsRequestFilter.shouldHandleAllocateProducerIdsRequest(apiVersion);
+            case ALTER_CLIENT_QUOTAS -> filter instanceof AlterClientQuotasRequestFilter alterClientQuotasRequestFilter
+                    && alterClientQuotasRequestFilter.shouldHandleAlterClientQuotasRequest(apiVersion);
+            case ALTER_CONFIGS -> filter instanceof AlterConfigsRequestFilter alterConfigsRequestFilter
+                    && alterConfigsRequestFilter.shouldHandleAlterConfigsRequest(apiVersion);
+            case ALTER_PARTITION_REASSIGNMENTS -> filter instanceof AlterPartitionReassignmentsRequestFilter alterPartitionReassignmentsRequestFilter
+                    && alterPartitionReassignmentsRequestFilter.shouldHandleAlterPartitionReassignmentsRequest(apiVersion);
+            case ALTER_PARTITION -> filter instanceof AlterPartitionRequestFilter alterPartitionRequestFilter
+                    && alterPartitionRequestFilter.shouldHandleAlterPartitionRequest(apiVersion);
+            case ALTER_REPLICA_LOG_DIRS -> filter instanceof AlterReplicaLogDirsRequestFilter alterReplicaLogDirsRequestFilter
+                    && alterReplicaLogDirsRequestFilter.shouldHandleAlterReplicaLogDirsRequest(apiVersion);
+            case ALTER_USER_SCRAM_CREDENTIALS -> filter instanceof AlterUserScramCredentialsRequestFilter alterUserScramCredentialsRequestFilter
+                    && alterUserScramCredentialsRequestFilter.shouldHandleAlterUserScramCredentialsRequest(apiVersion);
+            case API_VERSIONS -> filter instanceof ApiVersionsRequestFilter apiVersionsRequestFilter
+                    && apiVersionsRequestFilter.shouldHandleApiVersionsRequest(apiVersion);
+            case BEGIN_QUORUM_EPOCH -> filter instanceof BeginQuorumEpochRequestFilter beginQuorumEpochRequestFilter
+                    && beginQuorumEpochRequestFilter.shouldHandleBeginQuorumEpochRequest(apiVersion);
+            case BROKER_HEARTBEAT -> filter instanceof BrokerHeartbeatRequestFilter brokerHeartbeatRequestFilter
+                    && brokerHeartbeatRequestFilter.shouldHandleBrokerHeartbeatRequest(apiVersion);
+            case BROKER_REGISTRATION -> filter instanceof BrokerRegistrationRequestFilter brokerRegistrationRequestFilter
+                    && brokerRegistrationRequestFilter.shouldHandleBrokerRegistrationRequest(apiVersion);
+            case CREATE_ACLS -> filter instanceof CreateAclsRequestFilter createAclsRequestFilter && createAclsRequestFilter.shouldHandleCreateAclsRequest(apiVersion);
+            case CREATE_DELEGATION_TOKEN -> filter instanceof CreateDelegationTokenRequestFilter createDelegationTokenRequestFilter
+                    && createDelegationTokenRequestFilter.shouldHandleCreateDelegationTokenRequest(apiVersion);
+            case CREATE_PARTITIONS -> filter instanceof CreatePartitionsRequestFilter createPartitionsRequestFilter
+                    && createPartitionsRequestFilter.shouldHandleCreatePartitionsRequest(apiVersion);
+            case CREATE_TOPICS -> filter instanceof CreateTopicsRequestFilter createTopicsRequestFilter
+                    && createTopicsRequestFilter.shouldHandleCreateTopicsRequest(apiVersion);
+            case DELETE_ACLS -> filter instanceof DeleteAclsRequestFilter deleteAclsRequestFilter && deleteAclsRequestFilter.shouldHandleDeleteAclsRequest(apiVersion);
+            case DELETE_GROUPS -> filter instanceof DeleteGroupsRequestFilter deleteGroupsRequestFilter
+                    && deleteGroupsRequestFilter.shouldHandleDeleteGroupsRequest(apiVersion);
+            case DELETE_RECORDS -> filter instanceof DeleteRecordsRequestFilter deleteRecordsRequestFilter
+                    && deleteRecordsRequestFilter.shouldHandleDeleteRecordsRequest(apiVersion);
+            case DELETE_TOPICS -> filter instanceof DeleteTopicsRequestFilter deleteTopicsRequestFilter
+                    && deleteTopicsRequestFilter.shouldHandleDeleteTopicsRequest(apiVersion);
+            case DESCRIBE_ACLS -> filter instanceof DescribeAclsRequestFilter describeAclsRequestFilter
+                    && describeAclsRequestFilter.shouldHandleDescribeAclsRequest(apiVersion);
+            case DESCRIBE_CLIENT_QUOTAS -> filter instanceof DescribeClientQuotasRequestFilter describeClientQuotasRequestFilter
+                    && describeClientQuotasRequestFilter.shouldHandleDescribeClientQuotasRequest(apiVersion);
+            case DESCRIBE_CLUSTER -> filter instanceof DescribeClusterRequestFilter describeClusterRequestFilter
+                    && describeClusterRequestFilter.shouldHandleDescribeClusterRequest(apiVersion);
+            case DESCRIBE_CONFIGS -> filter instanceof DescribeConfigsRequestFilter describeConfigsRequestFilter
+                    && describeConfigsRequestFilter.shouldHandleDescribeConfigsRequest(apiVersion);
+            case DESCRIBE_DELEGATION_TOKEN -> filter instanceof DescribeDelegationTokenRequestFilter describeDelegationTokenRequestFilter
+                    && describeDelegationTokenRequestFilter.shouldHandleDescribeDelegationTokenRequest(apiVersion);
+            case DESCRIBE_GROUPS -> filter instanceof DescribeGroupsRequestFilter describeGroupsRequestFilter
+                    && describeGroupsRequestFilter.shouldHandleDescribeGroupsRequest(apiVersion);
+            case DESCRIBE_LOG_DIRS -> filter instanceof DescribeLogDirsRequestFilter describeLogDirsRequestFilter
+                    && describeLogDirsRequestFilter.shouldHandleDescribeLogDirsRequest(apiVersion);
+            case DESCRIBE_PRODUCERS -> filter instanceof DescribeProducersRequestFilter describeProducersRequestFilter
+                    && describeProducersRequestFilter.shouldHandleDescribeProducersRequest(apiVersion);
+            case DESCRIBE_QUORUM -> filter instanceof DescribeQuorumRequestFilter describeQuorumRequestFilter
+                    && describeQuorumRequestFilter.shouldHandleDescribeQuorumRequest(apiVersion);
+            case DESCRIBE_TRANSACTIONS -> filter instanceof DescribeTransactionsRequestFilter describeTransactionsRequestFilter
+                    && describeTransactionsRequestFilter.shouldHandleDescribeTransactionsRequest(apiVersion);
+            case DESCRIBE_USER_SCRAM_CREDENTIALS -> filter instanceof DescribeUserScramCredentialsRequestFilter describeUserScramCredentialsRequestFilter
+                    && describeUserScramCredentialsRequestFilter.shouldHandleDescribeUserScramCredentialsRequest(apiVersion);
+            case ELECT_LEADERS -> filter instanceof ElectLeadersRequestFilter electLeadersRequestFilter
+                    && electLeadersRequestFilter.shouldHandleElectLeadersRequest(apiVersion);
+            case END_QUORUM_EPOCH -> filter instanceof EndQuorumEpochRequestFilter endQuorumEpochRequestFilter
+                    && endQuorumEpochRequestFilter.shouldHandleEndQuorumEpochRequest(apiVersion);
+            case END_TXN -> filter instanceof EndTxnRequestFilter endTxnRequestFilter && endTxnRequestFilter.shouldHandleEndTxnRequest(apiVersion);
+            case ENVELOPE -> filter instanceof EnvelopeRequestFilter envelopeRequestFilter && envelopeRequestFilter.shouldHandleEnvelopeRequest(apiVersion);
+            case EXPIRE_DELEGATION_TOKEN -> filter instanceof ExpireDelegationTokenRequestFilter expireDelegationTokenRequestFilter
+                    && expireDelegationTokenRequestFilter.shouldHandleExpireDelegationTokenRequest(apiVersion);
+            case FETCH -> filter instanceof FetchRequestFilter fetchRequestFilter && fetchRequestFilter.shouldHandleFetchRequest(apiVersion);
+            case FETCH_SNAPSHOT -> filter instanceof FetchSnapshotRequestFilter fetchSnapshotRequestFilter
+                    && fetchSnapshotRequestFilter.shouldHandleFetchSnapshotRequest(apiVersion);
+            case FIND_COORDINATOR -> filter instanceof FindCoordinatorRequestFilter findCoordinatorRequestFilter
+                    && findCoordinatorRequestFilter.shouldHandleFindCoordinatorRequest(apiVersion);
+            case HEARTBEAT -> filter instanceof HeartbeatRequestFilter heartbeatRequestFilter && heartbeatRequestFilter.shouldHandleHeartbeatRequest(apiVersion);
+            case INCREMENTAL_ALTER_CONFIGS -> filter instanceof IncrementalAlterConfigsRequestFilter incrementalAlterConfigsRequestFilter
+                    && incrementalAlterConfigsRequestFilter.shouldHandleIncrementalAlterConfigsRequest(apiVersion);
+            case INIT_PRODUCER_ID -> filter instanceof InitProducerIdRequestFilter initProducerIdRequestFilter
+                    && initProducerIdRequestFilter.shouldHandleInitProducerIdRequest(apiVersion);
+            case JOIN_GROUP -> filter instanceof JoinGroupRequestFilter joinGroupRequestFilter && joinGroupRequestFilter.shouldHandleJoinGroupRequest(apiVersion);
+            case LEAVE_GROUP -> filter instanceof LeaveGroupRequestFilter leaveGroupRequestFilter && leaveGroupRequestFilter.shouldHandleLeaveGroupRequest(apiVersion);
+            case LIST_GROUPS -> filter instanceof ListGroupsRequestFilter listGroupsRequestFilter && listGroupsRequestFilter.shouldHandleListGroupsRequest(apiVersion);
+            case LIST_OFFSETS -> filter instanceof ListOffsetsRequestFilter listOffsetsRequestFilter
+                    && listOffsetsRequestFilter.shouldHandleListOffsetsRequest(apiVersion);
+            case LIST_PARTITION_REASSIGNMENTS -> filter instanceof ListPartitionReassignmentsRequestFilter listPartitionReassignmentsRequestFilter
+                    && listPartitionReassignmentsRequestFilter.shouldHandleListPartitionReassignmentsRequest(apiVersion);
+            case LIST_TRANSACTIONS -> filter instanceof ListTransactionsRequestFilter listTransactionsRequestFilter
+                    && listTransactionsRequestFilter.shouldHandleListTransactionsRequest(apiVersion);
+            case METADATA -> filter instanceof MetadataRequestFilter metadataRequestFilter && metadataRequestFilter.shouldHandleMetadataRequest(apiVersion);
+            case OFFSET_COMMIT -> filter instanceof OffsetCommitRequestFilter offsetCommitRequestFilter
+                    && offsetCommitRequestFilter.shouldHandleOffsetCommitRequest(apiVersion);
+            case OFFSET_DELETE -> filter instanceof OffsetDeleteRequestFilter offsetDeleteRequestFilter
+                    && offsetDeleteRequestFilter.shouldHandleOffsetDeleteRequest(apiVersion);
+            case OFFSET_FETCH -> filter instanceof OffsetFetchRequestFilter offsetFetchRequestFilter
+                    && offsetFetchRequestFilter.shouldHandleOffsetFetchRequest(apiVersion);
+            case OFFSET_FOR_LEADER_EPOCH -> filter instanceof OffsetForLeaderEpochRequestFilter offsetForLeaderEpochRequestFilter
+                    && offsetForLeaderEpochRequestFilter.shouldHandleOffsetForLeaderEpochRequest(apiVersion);
+            case PRODUCE -> filter instanceof ProduceRequestFilter produceRequestFilter && produceRequestFilter.shouldHandleProduceRequest(apiVersion);
+            case RENEW_DELEGATION_TOKEN -> filter instanceof RenewDelegationTokenRequestFilter renewDelegationTokenRequestFilter
+                    && renewDelegationTokenRequestFilter.shouldHandleRenewDelegationTokenRequest(apiVersion);
+            case SASL_AUTHENTICATE -> filter instanceof SaslAuthenticateRequestFilter saslAuthenticateRequestFilter
+                    && saslAuthenticateRequestFilter.shouldHandleSaslAuthenticateRequest(apiVersion);
+            case SASL_HANDSHAKE -> filter instanceof SaslHandshakeRequestFilter saslHandshakeRequestFilter
+                    && saslHandshakeRequestFilter.shouldHandleSaslHandshakeRequest(apiVersion);
+            case SYNC_GROUP -> filter instanceof SyncGroupRequestFilter syncGroupRequestFilter && syncGroupRequestFilter.shouldHandleSyncGroupRequest(apiVersion);
+            case TXN_OFFSET_COMMIT -> filter instanceof TxnOffsetCommitRequestFilter txnOffsetCommitRequestFilter
+                    && txnOffsetCommitRequestFilter.shouldHandleTxnOffsetCommitRequest(apiVersion);
+            case UNREGISTER_BROKER -> filter instanceof UnregisterBrokerRequestFilter unregisterBrokerRequestFilter
+                    && unregisterBrokerRequestFilter.shouldHandleUnregisterBrokerRequest(apiVersion);
+            case UPDATE_FEATURES -> filter instanceof UpdateFeaturesRequestFilter updateFeaturesRequestFilter
+                    && updateFeaturesRequestFilter.shouldHandleUpdateFeaturesRequest(apiVersion);
+            case VOTE -> filter instanceof VoteRequestFilter voteRequestFilter && voteRequestFilter.shouldHandleVoteRequest(apiVersion);
+            case WRITE_TXN_MARKERS -> filter instanceof WriteTxnMarkersRequestFilter writeTxnMarkersRequestFilter
+                    && writeTxnMarkersRequestFilter.shouldHandleWriteTxnMarkersRequest(apiVersion);
             default -> throw new IllegalStateException("Unsupported API key " + apiKey);
         };
     }
@@ -671,107 +688,125 @@ public class SpecificFilterInvoker implements FilterInvoker {
     @Override
     public boolean shouldHandleResponse(ApiKeys apiKey, short apiVersion) {
         return switch (apiKey) {
-            case ADD_OFFSETS_TO_TXN -> filter instanceof AddOffsetsToTxnResponseFilter
-                    && ((AddOffsetsToTxnResponseFilter) filter).shouldHandleAddOffsetsToTxnResponse(apiVersion);
-            case ADD_PARTITIONS_TO_TXN -> filter instanceof AddPartitionsToTxnResponseFilter
-                    && ((AddPartitionsToTxnResponseFilter) filter).shouldHandleAddPartitionsToTxnResponse(apiVersion);
-            case ALLOCATE_PRODUCER_IDS -> filter instanceof AllocateProducerIdsResponseFilter
-                    && ((AllocateProducerIdsResponseFilter) filter).shouldHandleAllocateProducerIdsResponse(apiVersion);
-            case ALTER_CLIENT_QUOTAS -> filter instanceof AlterClientQuotasResponseFilter
-                    && ((AlterClientQuotasResponseFilter) filter).shouldHandleAlterClientQuotasResponse(apiVersion);
-            case ALTER_CONFIGS -> filter instanceof AlterConfigsResponseFilter && ((AlterConfigsResponseFilter) filter).shouldHandleAlterConfigsResponse(apiVersion);
-            case ALTER_PARTITION_REASSIGNMENTS -> filter instanceof AlterPartitionReassignmentsResponseFilter
-                    && ((AlterPartitionReassignmentsResponseFilter) filter).shouldHandleAlterPartitionReassignmentsResponse(apiVersion);
-            case ALTER_PARTITION -> filter instanceof AlterPartitionResponseFilter
-                    && ((AlterPartitionResponseFilter) filter).shouldHandleAlterPartitionResponse(apiVersion);
-            case ALTER_REPLICA_LOG_DIRS -> filter instanceof AlterReplicaLogDirsResponseFilter
-                    && ((AlterReplicaLogDirsResponseFilter) filter).shouldHandleAlterReplicaLogDirsResponse(apiVersion);
-            case ALTER_USER_SCRAM_CREDENTIALS -> filter instanceof AlterUserScramCredentialsResponseFilter
-                    && ((AlterUserScramCredentialsResponseFilter) filter).shouldHandleAlterUserScramCredentialsResponse(apiVersion);
-            case API_VERSIONS -> filter instanceof ApiVersionsResponseFilter && ((ApiVersionsResponseFilter) filter).shouldHandleApiVersionsResponse(apiVersion);
-            case BEGIN_QUORUM_EPOCH -> filter instanceof BeginQuorumEpochResponseFilter
-                    && ((BeginQuorumEpochResponseFilter) filter).shouldHandleBeginQuorumEpochResponse(apiVersion);
-            case BROKER_HEARTBEAT -> filter instanceof BrokerHeartbeatResponseFilter
-                    && ((BrokerHeartbeatResponseFilter) filter).shouldHandleBrokerHeartbeatResponse(apiVersion);
-            case BROKER_REGISTRATION -> filter instanceof BrokerRegistrationResponseFilter
-                    && ((BrokerRegistrationResponseFilter) filter).shouldHandleBrokerRegistrationResponse(apiVersion);
-            case CREATE_ACLS -> filter instanceof CreateAclsResponseFilter && ((CreateAclsResponseFilter) filter).shouldHandleCreateAclsResponse(apiVersion);
-            case CREATE_DELEGATION_TOKEN -> filter instanceof CreateDelegationTokenResponseFilter
-                    && ((CreateDelegationTokenResponseFilter) filter).shouldHandleCreateDelegationTokenResponse(apiVersion);
-            case CREATE_PARTITIONS -> filter instanceof CreatePartitionsResponseFilter
-                    && ((CreatePartitionsResponseFilter) filter).shouldHandleCreatePartitionsResponse(apiVersion);
-            case CREATE_TOPICS -> filter instanceof CreateTopicsResponseFilter && ((CreateTopicsResponseFilter) filter).shouldHandleCreateTopicsResponse(apiVersion);
-            case DELETE_ACLS -> filter instanceof DeleteAclsResponseFilter && ((DeleteAclsResponseFilter) filter).shouldHandleDeleteAclsResponse(apiVersion);
-            case DELETE_GROUPS -> filter instanceof DeleteGroupsResponseFilter && ((DeleteGroupsResponseFilter) filter).shouldHandleDeleteGroupsResponse(apiVersion);
-            case DELETE_RECORDS -> filter instanceof DeleteRecordsResponseFilter && ((DeleteRecordsResponseFilter) filter).shouldHandleDeleteRecordsResponse(apiVersion);
-            case DELETE_TOPICS -> filter instanceof DeleteTopicsResponseFilter && ((DeleteTopicsResponseFilter) filter).shouldHandleDeleteTopicsResponse(apiVersion);
-            case DESCRIBE_ACLS -> filter instanceof DescribeAclsResponseFilter && ((DescribeAclsResponseFilter) filter).shouldHandleDescribeAclsResponse(apiVersion);
-            case DESCRIBE_CLIENT_QUOTAS -> filter instanceof DescribeClientQuotasResponseFilter
-                    && ((DescribeClientQuotasResponseFilter) filter).shouldHandleDescribeClientQuotasResponse(apiVersion);
-            case DESCRIBE_CLUSTER -> filter instanceof DescribeClusterResponseFilter
-                    && ((DescribeClusterResponseFilter) filter).shouldHandleDescribeClusterResponse(apiVersion);
-            case DESCRIBE_CONFIGS -> filter instanceof DescribeConfigsResponseFilter
-                    && ((DescribeConfigsResponseFilter) filter).shouldHandleDescribeConfigsResponse(apiVersion);
-            case DESCRIBE_DELEGATION_TOKEN -> filter instanceof DescribeDelegationTokenResponseFilter
-                    && ((DescribeDelegationTokenResponseFilter) filter).shouldHandleDescribeDelegationTokenResponse(apiVersion);
-            case DESCRIBE_GROUPS -> filter instanceof DescribeGroupsResponseFilter
-                    && ((DescribeGroupsResponseFilter) filter).shouldHandleDescribeGroupsResponse(apiVersion);
-            case DESCRIBE_LOG_DIRS -> filter instanceof DescribeLogDirsResponseFilter
-                    && ((DescribeLogDirsResponseFilter) filter).shouldHandleDescribeLogDirsResponse(apiVersion);
-            case DESCRIBE_PRODUCERS -> filter instanceof DescribeProducersResponseFilter
-                    && ((DescribeProducersResponseFilter) filter).shouldHandleDescribeProducersResponse(apiVersion);
-            case DESCRIBE_QUORUM -> filter instanceof DescribeQuorumResponseFilter
-                    && ((DescribeQuorumResponseFilter) filter).shouldHandleDescribeQuorumResponse(apiVersion);
-            case DESCRIBE_TRANSACTIONS -> filter instanceof DescribeTransactionsResponseFilter
-                    && ((DescribeTransactionsResponseFilter) filter).shouldHandleDescribeTransactionsResponse(apiVersion);
-            case DESCRIBE_USER_SCRAM_CREDENTIALS -> filter instanceof DescribeUserScramCredentialsResponseFilter
-                    && ((DescribeUserScramCredentialsResponseFilter) filter).shouldHandleDescribeUserScramCredentialsResponse(apiVersion);
-            case ELECT_LEADERS -> filter instanceof ElectLeadersResponseFilter && ((ElectLeadersResponseFilter) filter).shouldHandleElectLeadersResponse(apiVersion);
-            case END_QUORUM_EPOCH -> filter instanceof EndQuorumEpochResponseFilter
-                    && ((EndQuorumEpochResponseFilter) filter).shouldHandleEndQuorumEpochResponse(apiVersion);
-            case END_TXN -> filter instanceof EndTxnResponseFilter && ((EndTxnResponseFilter) filter).shouldHandleEndTxnResponse(apiVersion);
-            case ENVELOPE -> filter instanceof EnvelopeResponseFilter && ((EnvelopeResponseFilter) filter).shouldHandleEnvelopeResponse(apiVersion);
-            case EXPIRE_DELEGATION_TOKEN -> filter instanceof ExpireDelegationTokenResponseFilter
-                    && ((ExpireDelegationTokenResponseFilter) filter).shouldHandleExpireDelegationTokenResponse(apiVersion);
-            case FETCH -> filter instanceof FetchResponseFilter && ((FetchResponseFilter) filter).shouldHandleFetchResponse(apiVersion);
-            case FETCH_SNAPSHOT -> filter instanceof FetchSnapshotResponseFilter && ((FetchSnapshotResponseFilter) filter).shouldHandleFetchSnapshotResponse(apiVersion);
-            case FIND_COORDINATOR -> filter instanceof FindCoordinatorResponseFilter
-                    && ((FindCoordinatorResponseFilter) filter).shouldHandleFindCoordinatorResponse(apiVersion);
-            case HEARTBEAT -> filter instanceof HeartbeatResponseFilter && ((HeartbeatResponseFilter) filter).shouldHandleHeartbeatResponse(apiVersion);
-            case INCREMENTAL_ALTER_CONFIGS -> filter instanceof IncrementalAlterConfigsResponseFilter
-                    && ((IncrementalAlterConfigsResponseFilter) filter).shouldHandleIncrementalAlterConfigsResponse(apiVersion);
-            case INIT_PRODUCER_ID -> filter instanceof InitProducerIdResponseFilter
-                    && ((InitProducerIdResponseFilter) filter).shouldHandleInitProducerIdResponse(apiVersion);
-            case JOIN_GROUP -> filter instanceof JoinGroupResponseFilter && ((JoinGroupResponseFilter) filter).shouldHandleJoinGroupResponse(apiVersion);
-            case LEAVE_GROUP -> filter instanceof LeaveGroupResponseFilter && ((LeaveGroupResponseFilter) filter).shouldHandleLeaveGroupResponse(apiVersion);
-            case LIST_GROUPS -> filter instanceof ListGroupsResponseFilter && ((ListGroupsResponseFilter) filter).shouldHandleListGroupsResponse(apiVersion);
-            case LIST_OFFSETS -> filter instanceof ListOffsetsResponseFilter && ((ListOffsetsResponseFilter) filter).shouldHandleListOffsetsResponse(apiVersion);
-            case LIST_PARTITION_REASSIGNMENTS -> filter instanceof ListPartitionReassignmentsResponseFilter
-                    && ((ListPartitionReassignmentsResponseFilter) filter).shouldHandleListPartitionReassignmentsResponse(apiVersion);
-            case LIST_TRANSACTIONS -> filter instanceof ListTransactionsResponseFilter
-                    && ((ListTransactionsResponseFilter) filter).shouldHandleListTransactionsResponse(apiVersion);
-            case METADATA -> filter instanceof MetadataResponseFilter && ((MetadataResponseFilter) filter).shouldHandleMetadataResponse(apiVersion);
-            case OFFSET_COMMIT -> filter instanceof OffsetCommitResponseFilter && ((OffsetCommitResponseFilter) filter).shouldHandleOffsetCommitResponse(apiVersion);
-            case OFFSET_DELETE -> filter instanceof OffsetDeleteResponseFilter && ((OffsetDeleteResponseFilter) filter).shouldHandleOffsetDeleteResponse(apiVersion);
-            case OFFSET_FETCH -> filter instanceof OffsetFetchResponseFilter && ((OffsetFetchResponseFilter) filter).shouldHandleOffsetFetchResponse(apiVersion);
-            case OFFSET_FOR_LEADER_EPOCH -> filter instanceof OffsetForLeaderEpochResponseFilter
-                    && ((OffsetForLeaderEpochResponseFilter) filter).shouldHandleOffsetForLeaderEpochResponse(apiVersion);
-            case PRODUCE -> filter instanceof ProduceResponseFilter && ((ProduceResponseFilter) filter).shouldHandleProduceResponse(apiVersion);
-            case RENEW_DELEGATION_TOKEN -> filter instanceof RenewDelegationTokenResponseFilter
-                    && ((RenewDelegationTokenResponseFilter) filter).shouldHandleRenewDelegationTokenResponse(apiVersion);
-            case SASL_AUTHENTICATE -> filter instanceof SaslAuthenticateResponseFilter
-                    && ((SaslAuthenticateResponseFilter) filter).shouldHandleSaslAuthenticateResponse(apiVersion);
-            case SASL_HANDSHAKE -> filter instanceof SaslHandshakeResponseFilter && ((SaslHandshakeResponseFilter) filter).shouldHandleSaslHandshakeResponse(apiVersion);
-            case SYNC_GROUP -> filter instanceof SyncGroupResponseFilter && ((SyncGroupResponseFilter) filter).shouldHandleSyncGroupResponse(apiVersion);
-            case TXN_OFFSET_COMMIT -> filter instanceof TxnOffsetCommitResponseFilter
-                    && ((TxnOffsetCommitResponseFilter) filter).shouldHandleTxnOffsetCommitResponse(apiVersion);
-            case UNREGISTER_BROKER -> filter instanceof UnregisterBrokerResponseFilter
-                    && ((UnregisterBrokerResponseFilter) filter).shouldHandleUnregisterBrokerResponse(apiVersion);
-            case UPDATE_FEATURES -> filter instanceof UpdateFeaturesResponseFilter
-                    && ((UpdateFeaturesResponseFilter) filter).shouldHandleUpdateFeaturesResponse(apiVersion);
-            case VOTE -> filter instanceof VoteResponseFilter && ((VoteResponseFilter) filter).shouldHandleVoteResponse(apiVersion);
-            case WRITE_TXN_MARKERS -> filter instanceof WriteTxnMarkersResponseFilter
-                    && ((WriteTxnMarkersResponseFilter) filter).shouldHandleWriteTxnMarkersResponse(apiVersion);
+            case ADD_OFFSETS_TO_TXN -> filter instanceof AddOffsetsToTxnResponseFilter addOffsetsToTxnResponseFilter
+                    && addOffsetsToTxnResponseFilter.shouldHandleAddOffsetsToTxnResponse(apiVersion);
+            case ADD_PARTITIONS_TO_TXN -> filter instanceof AddPartitionsToTxnResponseFilter addPartitionsToTxnResponseFilter
+                    && addPartitionsToTxnResponseFilter.shouldHandleAddPartitionsToTxnResponse(apiVersion);
+            case ALLOCATE_PRODUCER_IDS -> filter instanceof AllocateProducerIdsResponseFilter allocateProducerIdsResponseFilter
+                    && allocateProducerIdsResponseFilter.shouldHandleAllocateProducerIdsResponse(apiVersion);
+            case ALTER_CLIENT_QUOTAS -> filter instanceof AlterClientQuotasResponseFilter alterClientQuotasResponseFilter
+                    && alterClientQuotasResponseFilter.shouldHandleAlterClientQuotasResponse(apiVersion);
+            case ALTER_CONFIGS -> filter instanceof AlterConfigsResponseFilter alterConfigsResponseFilter
+                    && alterConfigsResponseFilter.shouldHandleAlterConfigsResponse(apiVersion);
+            case ALTER_PARTITION_REASSIGNMENTS -> filter instanceof AlterPartitionReassignmentsResponseFilter alterPartitionReassignmentsResponseFilter
+                    && alterPartitionReassignmentsResponseFilter.shouldHandleAlterPartitionReassignmentsResponse(apiVersion);
+            case ALTER_PARTITION -> filter instanceof AlterPartitionResponseFilter alterPartitionResponseFilter
+                    && alterPartitionResponseFilter.shouldHandleAlterPartitionResponse(apiVersion);
+            case ALTER_REPLICA_LOG_DIRS -> filter instanceof AlterReplicaLogDirsResponseFilter alterReplicaLogDirsResponseFilter
+                    && alterReplicaLogDirsResponseFilter.shouldHandleAlterReplicaLogDirsResponse(apiVersion);
+            case ALTER_USER_SCRAM_CREDENTIALS -> filter instanceof AlterUserScramCredentialsResponseFilter alterUserScramCredentialsResponseFilter
+                    && alterUserScramCredentialsResponseFilter.shouldHandleAlterUserScramCredentialsResponse(apiVersion);
+            case API_VERSIONS -> filter instanceof ApiVersionsResponseFilter apiVersionsResponseFilter
+                    && apiVersionsResponseFilter.shouldHandleApiVersionsResponse(apiVersion);
+            case BEGIN_QUORUM_EPOCH -> filter instanceof BeginQuorumEpochResponseFilter beginQuorumEpochResponseFilter
+                    && beginQuorumEpochResponseFilter.shouldHandleBeginQuorumEpochResponse(apiVersion);
+            case BROKER_HEARTBEAT -> filter instanceof BrokerHeartbeatResponseFilter brokerHeartbeatResponseFilter
+                    && brokerHeartbeatResponseFilter.shouldHandleBrokerHeartbeatResponse(apiVersion);
+            case BROKER_REGISTRATION -> filter instanceof BrokerRegistrationResponseFilter brokerRegistrationResponseFilter
+                    && brokerRegistrationResponseFilter.shouldHandleBrokerRegistrationResponse(apiVersion);
+            case CREATE_ACLS -> filter instanceof CreateAclsResponseFilter createAclsResponseFilter
+                    && createAclsResponseFilter.shouldHandleCreateAclsResponse(apiVersion);
+            case CREATE_DELEGATION_TOKEN -> filter instanceof CreateDelegationTokenResponseFilter createDelegationTokenResponseFilter
+                    && createDelegationTokenResponseFilter.shouldHandleCreateDelegationTokenResponse(apiVersion);
+            case CREATE_PARTITIONS -> filter instanceof CreatePartitionsResponseFilter createPartitionsResponseFilter
+                    && createPartitionsResponseFilter.shouldHandleCreatePartitionsResponse(apiVersion);
+            case CREATE_TOPICS -> filter instanceof CreateTopicsResponseFilter createTopicsResponseFilter
+                    && createTopicsResponseFilter.shouldHandleCreateTopicsResponse(apiVersion);
+            case DELETE_ACLS -> filter instanceof DeleteAclsResponseFilter deleteAclsResponseFilter
+                    && deleteAclsResponseFilter.shouldHandleDeleteAclsResponse(apiVersion);
+            case DELETE_GROUPS -> filter instanceof DeleteGroupsResponseFilter deleteGroupsResponseFilter
+                    && deleteGroupsResponseFilter.shouldHandleDeleteGroupsResponse(apiVersion);
+            case DELETE_RECORDS -> filter instanceof DeleteRecordsResponseFilter deleteRecordsResponseFilter
+                    && deleteRecordsResponseFilter.shouldHandleDeleteRecordsResponse(apiVersion);
+            case DELETE_TOPICS -> filter instanceof DeleteTopicsResponseFilter deleteTopicsResponseFilter
+                    && deleteTopicsResponseFilter.shouldHandleDeleteTopicsResponse(apiVersion);
+            case DESCRIBE_ACLS -> filter instanceof DescribeAclsResponseFilter describeAclsResponseFilter
+                    && describeAclsResponseFilter.shouldHandleDescribeAclsResponse(apiVersion);
+            case DESCRIBE_CLIENT_QUOTAS -> filter instanceof DescribeClientQuotasResponseFilter describeClientQuotasResponseFilter
+                    && describeClientQuotasResponseFilter.shouldHandleDescribeClientQuotasResponse(apiVersion);
+            case DESCRIBE_CLUSTER -> filter instanceof DescribeClusterResponseFilter describeClusterResponseFilter
+                    && describeClusterResponseFilter.shouldHandleDescribeClusterResponse(apiVersion);
+            case DESCRIBE_CONFIGS -> filter instanceof DescribeConfigsResponseFilter describeConfigsResponseFilter
+                    && describeConfigsResponseFilter.shouldHandleDescribeConfigsResponse(apiVersion);
+            case DESCRIBE_DELEGATION_TOKEN -> filter instanceof DescribeDelegationTokenResponseFilter describeDelegationTokenResponseFilter
+                    && describeDelegationTokenResponseFilter.shouldHandleDescribeDelegationTokenResponse(apiVersion);
+            case DESCRIBE_GROUPS -> filter instanceof DescribeGroupsResponseFilter describeGroupsResponseFilter
+                    && describeGroupsResponseFilter.shouldHandleDescribeGroupsResponse(apiVersion);
+            case DESCRIBE_LOG_DIRS -> filter instanceof DescribeLogDirsResponseFilter describeLogDirsResponseFilter
+                    && describeLogDirsResponseFilter.shouldHandleDescribeLogDirsResponse(apiVersion);
+            case DESCRIBE_PRODUCERS -> filter instanceof DescribeProducersResponseFilter describeProducersResponseFilter
+                    && describeProducersResponseFilter.shouldHandleDescribeProducersResponse(apiVersion);
+            case DESCRIBE_QUORUM -> filter instanceof DescribeQuorumResponseFilter describeQuorumResponseFilter
+                    && describeQuorumResponseFilter.shouldHandleDescribeQuorumResponse(apiVersion);
+            case DESCRIBE_TRANSACTIONS -> filter instanceof DescribeTransactionsResponseFilter describeTransactionsResponseFilter
+                    && describeTransactionsResponseFilter.shouldHandleDescribeTransactionsResponse(apiVersion);
+            case DESCRIBE_USER_SCRAM_CREDENTIALS -> filter instanceof DescribeUserScramCredentialsResponseFilter describeUserScramCredentialsResponseFilter
+                    && describeUserScramCredentialsResponseFilter.shouldHandleDescribeUserScramCredentialsResponse(apiVersion);
+            case ELECT_LEADERS -> filter instanceof ElectLeadersResponseFilter electLeadersResponseFilter
+                    && electLeadersResponseFilter.shouldHandleElectLeadersResponse(apiVersion);
+            case END_QUORUM_EPOCH -> filter instanceof EndQuorumEpochResponseFilter endQuorumEpochResponseFilter
+                    && endQuorumEpochResponseFilter.shouldHandleEndQuorumEpochResponse(apiVersion);
+            case END_TXN -> filter instanceof EndTxnResponseFilter endTxnResponseFilter && endTxnResponseFilter.shouldHandleEndTxnResponse(apiVersion);
+            case ENVELOPE -> filter instanceof EnvelopeResponseFilter envelopeResponseFilter && envelopeResponseFilter.shouldHandleEnvelopeResponse(apiVersion);
+            case EXPIRE_DELEGATION_TOKEN -> filter instanceof ExpireDelegationTokenResponseFilter expireDelegationTokenResponseFilter
+                    && expireDelegationTokenResponseFilter.shouldHandleExpireDelegationTokenResponse(apiVersion);
+            case FETCH -> filter instanceof FetchResponseFilter fetchResponseFilter && fetchResponseFilter.shouldHandleFetchResponse(apiVersion);
+            case FETCH_SNAPSHOT -> filter instanceof FetchSnapshotResponseFilter fetchSnapshotResponseFilter
+                    && fetchSnapshotResponseFilter.shouldHandleFetchSnapshotResponse(apiVersion);
+            case FIND_COORDINATOR -> filter instanceof FindCoordinatorResponseFilter findCoordinatorResponseFilter
+                    && findCoordinatorResponseFilter.shouldHandleFindCoordinatorResponse(apiVersion);
+            case HEARTBEAT -> filter instanceof HeartbeatResponseFilter heartbeatResponseFilter && heartbeatResponseFilter.shouldHandleHeartbeatResponse(apiVersion);
+            case INCREMENTAL_ALTER_CONFIGS -> filter instanceof IncrementalAlterConfigsResponseFilter incrementalAlterConfigsResponseFilter
+                    && incrementalAlterConfigsResponseFilter.shouldHandleIncrementalAlterConfigsResponse(apiVersion);
+            case INIT_PRODUCER_ID -> filter instanceof InitProducerIdResponseFilter initProducerIdResponseFilter
+                    && initProducerIdResponseFilter.shouldHandleInitProducerIdResponse(apiVersion);
+            case JOIN_GROUP -> filter instanceof JoinGroupResponseFilter joinGroupResponseFilter && joinGroupResponseFilter.shouldHandleJoinGroupResponse(apiVersion);
+            case LEAVE_GROUP -> filter instanceof LeaveGroupResponseFilter leaveGroupResponseFilter
+                    && leaveGroupResponseFilter.shouldHandleLeaveGroupResponse(apiVersion);
+            case LIST_GROUPS -> filter instanceof ListGroupsResponseFilter listGroupsResponseFilter
+                    && listGroupsResponseFilter.shouldHandleListGroupsResponse(apiVersion);
+            case LIST_OFFSETS -> filter instanceof ListOffsetsResponseFilter listOffsetsResponseFilter
+                    && listOffsetsResponseFilter.shouldHandleListOffsetsResponse(apiVersion);
+            case LIST_PARTITION_REASSIGNMENTS -> filter instanceof ListPartitionReassignmentsResponseFilter listPartitionReassignmentsResponseFilter
+                    && listPartitionReassignmentsResponseFilter.shouldHandleListPartitionReassignmentsResponse(apiVersion);
+            case LIST_TRANSACTIONS -> filter instanceof ListTransactionsResponseFilter listTransactionsResponseFilter
+                    && listTransactionsResponseFilter.shouldHandleListTransactionsResponse(apiVersion);
+            case METADATA -> filter instanceof MetadataResponseFilter metadataResponseFilter && metadataResponseFilter.shouldHandleMetadataResponse(apiVersion);
+            case OFFSET_COMMIT -> filter instanceof OffsetCommitResponseFilter offsetCommitResponseFilter
+                    && offsetCommitResponseFilter.shouldHandleOffsetCommitResponse(apiVersion);
+            case OFFSET_DELETE -> filter instanceof OffsetDeleteResponseFilter offsetDeleteResponseFilter
+                    && offsetDeleteResponseFilter.shouldHandleOffsetDeleteResponse(apiVersion);
+            case OFFSET_FETCH -> filter instanceof OffsetFetchResponseFilter offsetFetchResponseFilter
+                    && offsetFetchResponseFilter.shouldHandleOffsetFetchResponse(apiVersion);
+            case OFFSET_FOR_LEADER_EPOCH -> filter instanceof OffsetForLeaderEpochResponseFilter offsetForLeaderEpochResponseFilter
+                    && offsetForLeaderEpochResponseFilter.shouldHandleOffsetForLeaderEpochResponse(apiVersion);
+            case PRODUCE -> filter instanceof ProduceResponseFilter produceResponseFilter && produceResponseFilter.shouldHandleProduceResponse(apiVersion);
+            case RENEW_DELEGATION_TOKEN -> filter instanceof RenewDelegationTokenResponseFilter renewDelegationTokenResponseFilter
+                    && renewDelegationTokenResponseFilter.shouldHandleRenewDelegationTokenResponse(apiVersion);
+            case SASL_AUTHENTICATE -> filter instanceof SaslAuthenticateResponseFilter saslAuthenticateResponseFilter
+                    && saslAuthenticateResponseFilter.shouldHandleSaslAuthenticateResponse(apiVersion);
+            case SASL_HANDSHAKE -> filter instanceof SaslHandshakeResponseFilter saslHandshakeResponseFilter
+                    && saslHandshakeResponseFilter.shouldHandleSaslHandshakeResponse(apiVersion);
+            case SYNC_GROUP -> filter instanceof SyncGroupResponseFilter syncGroupResponseFilter && syncGroupResponseFilter.shouldHandleSyncGroupResponse(apiVersion);
+            case TXN_OFFSET_COMMIT -> filter instanceof TxnOffsetCommitResponseFilter txnOffsetCommitResponseFilter
+                    && txnOffsetCommitResponseFilter.shouldHandleTxnOffsetCommitResponse(apiVersion);
+            case UNREGISTER_BROKER -> filter instanceof UnregisterBrokerResponseFilter unregisterBrokerResponseFilter
+                    && unregisterBrokerResponseFilter.shouldHandleUnregisterBrokerResponse(apiVersion);
+            case UPDATE_FEATURES -> filter instanceof UpdateFeaturesResponseFilter updateFeaturesResponseFilter
+                    && updateFeaturesResponseFilter.shouldHandleUpdateFeaturesResponse(apiVersion);
+            case VOTE -> filter instanceof VoteResponseFilter voteResponseFilter && voteResponseFilter.shouldHandleVoteResponse(apiVersion);
+            case WRITE_TXN_MARKERS -> filter instanceof WriteTxnMarkersResponseFilter writeTxnMarkersResponseFilter
+                    && writeTxnMarkersResponseFilter.shouldHandleWriteTxnMarkersResponse(apiVersion);
             default -> throw new IllegalStateException("Unsupported API key " + apiKey);
         };
     }

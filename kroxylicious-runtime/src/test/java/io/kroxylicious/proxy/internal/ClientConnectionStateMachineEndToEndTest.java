@@ -18,18 +18,6 @@ import java.util.function.Function;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLHandshakeException;
 
-import org.apache.kafka.common.message.ApiVersionsRequestData;
-import org.apache.kafka.common.message.ApiVersionsResponseData;
-import org.apache.kafka.common.message.MetadataRequestData;
-import org.apache.kafka.common.message.MetadataResponseData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.SaslAuthenticateRequestData;
-import org.apache.kafka.common.message.SaslAuthenticateResponseData;
-import org.apache.kafka.common.message.SaslHandshakeRequestData;
-import org.apache.kafka.common.message.SaslHandshakeResponseData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
-import org.apache.kafka.common.protocol.Errors;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -55,9 +43,22 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 
-import io.kroxylicious.proxy.bootstrap.FilterChainFactory;
+import io.kroxylicious.kafka.common.message.ApiVersionsRequestData;
+import io.kroxylicious.kafka.common.message.ApiVersionsResponseData;
+import io.kroxylicious.kafka.common.message.MetadataRequestData;
+import io.kroxylicious.kafka.common.message.MetadataResponseData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateRequestData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateResponseData;
+import io.kroxylicious.kafka.common.message.SaslHandshakeRequestData;
+import io.kroxylicious.kafka.common.message.SaslHandshakeResponseData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.protocol.Errors;
+import io.kroxylicious.proxy.bootstrap.TlsCredentialSupplierManager;
 import io.kroxylicious.proxy.config.CacheConfiguration;
 import io.kroxylicious.proxy.config.PluginFactoryRegistry;
+import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.frame.DecodedRequestFrame;
 import io.kroxylicious.proxy.frame.DecodedResponseFrame;
 import io.kroxylicious.proxy.internal.codec.FrameOversizedException;
@@ -65,6 +66,8 @@ import io.kroxylicious.proxy.internal.filter.impl.TopicNameCacheFilter;
 import io.kroxylicious.proxy.internal.net.EndpointBinding;
 import io.kroxylicious.proxy.internal.net.EndpointGateway;
 import io.kroxylicious.proxy.internal.net.EndpointReconciler;
+import io.kroxylicious.proxy.internal.routing.DirectRouting;
+import io.kroxylicious.proxy.internal.routing.UpstreamClusterModel;
 import io.kroxylicious.proxy.internal.subject.DefaultSubjectBuilder;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
 import io.kroxylicious.proxy.service.HostPort;
@@ -95,6 +98,7 @@ class ClientConnectionStateMachineEndToEndTest {
     public static final String CLIENT_SOFTWARE_VERSION = "1.0.0";
     private static final Duration BACKGROUND_TASK_TIMEOUT = Duration.ofSeconds(1);
     public static final KafkaSession TEST_SESSION = new KafkaSession("testSession", KafkaSessionState.NOT_AUTHENTICATED);
+    public static final String DIRECT_ROUTE_NAME = "upstream";
 
     private EmbeddedChannel inboundChannel;
     private ChannelHandlerContext inboundCtx;
@@ -109,46 +113,42 @@ class ClientConnectionStateMachineEndToEndTest {
     ClientConnectionStateMachine clientConnectionStateMachine(EndpointBinding binding) {
         var kafkaSession = new KafkaSession(KafkaSessionState.ESTABLISHING);
         // Override createServerConnection to substitute EmbeddedChannels for real TCP connections
-        return new ClientConnectionStateMachine(binding, new DefaultSubjectBuilder(List.of()), kafkaSession) {
-            @Override
-            ServerConnectionStateMachine createServerConnection(HostPort remote) {
-                return new ServerConnectionStateMachine(
-                        remote,
-                        this,
-                        virtualCluster(),
-                        clusterName(),
-                        nodeId()) {
-                    @Override
-                    Bootstrap configureBootstrap(
-                                                 KafkaProxyBackendHandler capturedBackendHandler,
-                                                 Channel inboundChannel) {
-                        ClientConnectionStateMachineEndToEndTest.this.backendHandler = capturedBackendHandler;
-                        newOutboundChannel();
-                        Bootstrap bootstrap = new Bootstrap();
-                        bootstrap.group(outboundChannel.eventLoop())
-                                .channel(outboundChannel.getClass())
-                                .handler(capturedBackendHandler)
-                                .option(ChannelOption.AUTO_READ, true)
-                                .option(ChannelOption.TCP_NODELAY, true);
-                        return bootstrap;
-                    }
+        return new ClientConnectionStateMachine(binding, new DefaultSubjectBuilder(List.of()), kafkaSession,
+                (remote, ccsm, vc, cn, ni,
+                 connectionCounter, errorCounter, backpressureMeter,
+                 connectionToken, tlsConfig) -> new ServerConnectionStateMachine(
+                         remote, ccsm, vc, cn, ni,
+                         connectionCounter, errorCounter, backpressureMeter,
+                         connectionToken, tlsConfig) {
+                     @Override
+                     Bootstrap configureBootstrap(
+                                                  KafkaProxyBackendHandler capturedBackendHandler,
+                                                  Channel inboundChannel) {
+                         ClientConnectionStateMachineEndToEndTest.this.backendHandler = capturedBackendHandler;
+                         newOutboundChannel();
+                         Bootstrap bootstrap = new Bootstrap();
+                         bootstrap.group(outboundChannel.eventLoop())
+                                 .channel(outboundChannel.getClass())
+                                 .handler(capturedBackendHandler)
+                                 .option(ChannelOption.AUTO_READ, true)
+                                 .option(ChannelOption.TCP_NODELAY, true);
+                         return bootstrap;
+                     }
 
-                    @Override
-                    ChannelFuture initConnection(
-                                                 String remoteHost,
-                                                 int remotePort,
-                                                 Bootstrap bootstrap) {
-                        outboundChannel.pipeline().addFirst(
-                                ClientConnectionStateMachineEndToEndTest.this.backendHandler);
-                        outboundChannel.pipeline().fireChannelRegistered();
-                        if (ClientConnectionStateMachineEndToEndTest.this.activateOutboundChannelAutomatically) {
-                            outboundChannel.pipeline().fireChannelActive();
-                        }
-                        return outboundChannel.newPromise();
-                    }
-                };
-            }
-        };
+                     @Override
+                     ChannelFuture initConnection(
+                                                  String remoteHost,
+                                                  int remotePort,
+                                                  Bootstrap bootstrap) {
+                         outboundChannel.pipeline().addFirst(
+                                 ClientConnectionStateMachineEndToEndTest.this.backendHandler);
+                         outboundChannel.pipeline().fireChannelRegistered();
+                         if (ClientConnectionStateMachineEndToEndTest.this.activateOutboundChannelAutomatically) {
+                             outboundChannel.pipeline().fireChannelActive();
+                         }
+                         return outboundChannel.newPromise();
+                     }
+                 });
     }
 
     @AfterEach
@@ -212,7 +212,7 @@ class ClientConnectionStateMachineEndToEndTest {
         var clientConnectionStateMachine = buildHandlerInClientActiveState(false);
 
         // When
-        inboundChannel.close();
+        inboundChannel.close().syncUninterruptibly();
 
         // Then
         inboundChannel.checkException();
@@ -234,7 +234,7 @@ class ClientConnectionStateMachineEndToEndTest {
             clientConnectionStateMachine.forceState(
                     new ClientConnectionState.HaProxy(),
                     handler,
-                    null,
+                    java.util.Map.of(),
                     TEST_SESSION, false);
         }
 
@@ -483,8 +483,6 @@ class ClientConnectionStateMachineEndToEndTest {
                                               DelegatingDecodePredicate dp) {
         var pfr = mock(PluginFactoryRegistry.class);
         return new KafkaProxyFrontendHandler(pfr,
-                new FilterChainFactory(pfr, List.of()),
-                List.of(),
                 mock(EndpointReconciler.class),
                 new ApiVersionsServiceImpl(),
                 dp,
@@ -501,11 +499,16 @@ class ClientConnectionStateMachineEndToEndTest {
         when(virtualClusterModel.getClusterName()).thenReturn("cluster");
         TopicNameCacheFilter topicNameCacheFilter = new TopicNameCacheFilter(CacheConfiguration.DEFAULT, "cluster");
         when(virtualClusterModel.getTopicNameCacheFilter()).thenReturn(topicNameCacheFilter);
+        // FCF is now resolved per-connection from the VC (see #4055). An empty FCF here is
+        // sufficient — these tests don't exercise filter behavior, just connection flow.
+        when(virtualClusterModel.filterChainFactory()).thenReturn(io.kroxylicious.proxy.bootstrap.FilterChainFactory.empty());
         EndpointBinding endpointBinding = mock(EndpointBinding.class);
         EndpointGateway endpointGateway = mock(EndpointGateway.class);
         when(endpointGateway.virtualCluster()).thenReturn(virtualClusterModel);
         when(endpointBinding.endpointGateway()).thenReturn(endpointGateway);
         when(endpointBinding.upstreamTarget()).thenReturn(new HostPort(CLUSTER_HOST, CLUSTER_PORT));
+        var targetCluster = new TargetCluster(CLUSTER_HOST + ":" + CLUSTER_PORT, Optional.empty());
+        when(virtualClusterModel.routing()).thenReturn(new DirectRouting(DIRECT_ROUTE_NAME, targetCluster));
         final Optional<SslContext> sslContext;
         try {
             sslContext = Optional.ofNullable(tlsConfigured ? SslContextBuilder.forClient().build() : null);
@@ -513,7 +516,8 @@ class ClientConnectionStateMachineEndToEndTest {
         catch (SSLException e) {
             throw new RuntimeException(e);
         }
-        when(virtualClusterModel.getUpstreamSslContext()).thenReturn(sslContext);
+        when(virtualClusterModel.getUpstreamClusterForRoute(DIRECT_ROUTE_NAME))
+                .thenReturn(new UpstreamClusterModel(targetCluster, sslContext, TlsCredentialSupplierManager.unconfigured()));
         when(virtualClusterModel.getClusterName()).thenReturn("RandomCluster");
         var clientConnectionStateMachine = clientConnectionStateMachine(endpointBinding);
 
@@ -807,6 +811,8 @@ class ClientConnectionStateMachineEndToEndTest {
     /**
      * Find the index of the handler instance in the pipeline.
      */
+    // identity check: locating a specific handler instance in the pipeline
+    @SuppressWarnings("ReferenceEquality")
     private int findHandlerIndex(List<String> handlerNames, KafkaProxyFrontendHandler handler) {
         ChannelPipeline pipeline = inboundChannel.pipeline();
         for (int i = 0; i < handlerNames.size(); i++) {

@@ -47,6 +47,13 @@ class AzureKeyVaultEdekTest {
         assertThat(bytes).isEmpty();
     }
 
+    @Test
+    void toStringFormation() {
+        AzureKeyVaultEdek edek = createEdek(KEY_NAME, KEY_VERSION, EDEK, VAULT_NAME, KEY_TYPE);
+        assertThat(edek).hasToString("AzureKeyVaultEdek{keyName=" + KEY_NAME + ", vaultName=" + VAULT_NAME
+                + ", supportedKeyType=" + KEY_TYPE + ", keyVersion=" + KEY_VERSION + ", edek=<redacted>}");
+    }
+
     static Stream<Arguments> validEdek() {
         return Stream.of(argumentSet("simple", KEY_NAME, KEY_VERSION, EDEK),
                 argumentSet("key name with uppercase alpha", "ABCDEFGHIJKLMNOPQRSTUVWXYZ", KEY_VERSION, EDEK),
@@ -111,7 +118,7 @@ class AzureKeyVaultEdekTest {
      */
     @MethodSource
     @ParameterizedTest
-    void testEqualsHashCode(AzureKeyVaultEdek a, AzureKeyVaultEdek b, boolean shouldEqual) {
+    void testEqualsHashCode(Object a, Object b, boolean shouldEqual) {
         if (shouldEqual) {
             assertThat(a).isEqualTo(b);
             assertThat(b).isEqualTo(a);
@@ -139,6 +146,8 @@ class AzureKeyVaultEdekTest {
         arguments.add(argumentSet("not equal when edeks differ", baseline, differentEdek, false));
         arguments.add(argumentSet("not equal when vault names differ", baseline, differentVaultName, false));
         arguments.add(argumentSet("not equal when key types differ", baseline, differentKeyType, false));
+        arguments.add(argumentSet("not equal to null", baseline, null, false));
+        arguments.add(argumentSet("not equal to unrelated type", baseline, "a string", false));
         return arguments;
     }
 

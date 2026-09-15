@@ -14,6 +14,8 @@ import io.netty.buffer.ByteBuf;
 
 import io.kroxylicious.proxy.tag.VisibleForTesting;
 
+import edu.umd.cs.findbugs.annotations.Nullable;
+
 /**
  * A frame in the Kafka protocol which has not been decoded.
  * The wrapped buffer <strong>does not</strong> include the frame size prefix.
@@ -28,10 +30,13 @@ public abstract class OpaqueFrame implements Frame {
     /* Api Key version */
     private final short apiVersion;
 
+    /** The length in bytes of the frame within {@link #buf}, excluding the frame size prefix. */
     protected final int length;
+    /** The correlation id. */
     protected final int correlationId;
     /** The message buffer excluding the frame size, including the header and body. */
     protected final ByteBuf buf;
+    private @Nullable PathElement routing;
 
     /**
      * @param apiKeyId api key id
@@ -102,9 +107,23 @@ public abstract class OpaqueFrame implements Frame {
         buf.release();
     }
 
+    /**
+     * The underlying message buffer.
+     * @return The message buffer, excluding the frame size prefix.
+     */
     @VisibleForTesting
     public ByteBuf buf() {
         return buf;
+    }
+
+    @Override
+    public @Nullable PathElement routing() {
+        return routing;
+    }
+
+    @Override
+    public void setRouting(@Nullable PathElement routing) {
+        this.routing = routing;
     }
 
     @Override

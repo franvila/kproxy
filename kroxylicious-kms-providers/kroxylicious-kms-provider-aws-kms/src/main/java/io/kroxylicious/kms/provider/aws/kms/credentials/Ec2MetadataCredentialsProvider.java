@@ -49,8 +49,8 @@ public class Ec2MetadataCredentialsProvider extends AbstractRefreshingCredential
     };
     @SuppressWarnings("java:S1313")
     private static final URI DEFAULT_IP4_METADATA_ENDPOINT = URI.create("http://169.254.169.254/");
-    private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration HTTP_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration HTTP_CONNECT_TIMEOUT = Duration.ofSeconds(20);
     private static final String AWS_METADATA_TOKEN_TTL_SECONDS_HEADER = "X-aws-ec2-metadata-token-ttl-seconds";
     private static final String AWS_METADATA_TOKEN_HEADER = "X-aws-ec2-metadata-token";
     private static final String AWS_TOKEN_EXPIRATION_SECONDS = "60";
@@ -101,6 +101,11 @@ public class Ec2MetadataCredentialsProvider extends AbstractRefreshingCredential
                 .build();
     }
 
+    @VisibleForTesting
+    HttpClient getHttpClient() {
+        return client;
+    }
+
     @Override
     protected CompletionStage<SecurityCredentials> fetchCredentials() {
         return getToken()
@@ -140,7 +145,8 @@ public class Ec2MetadataCredentialsProvider extends AbstractRefreshingCredential
                 .thenApply(Ec2MetadataCredentialsProvider::checkResponseStatus);
     }
 
-    private HttpRequest createTokenRequest() {
+    @VisibleForTesting
+    HttpRequest createTokenRequest() {
         return HttpRequest.newBuilder()
                 .uri(getMetadataEndpoint().resolve(TOKEN_RETRIEVAL_ENDPOINT))
                 .header(AWS_METADATA_TOKEN_TTL_SECONDS_HEADER, AWS_TOKEN_EXPIRATION_SECONDS)
@@ -197,6 +203,15 @@ public class Ec2MetadataCredentialsProvider extends AbstractRefreshingCredential
         return body instanceof byte[] bytes ? new String(bytes, StandardCharsets.UTF_8) : String.valueOf(body);
     }
 
+    /**
+     * The temporary credentials returned by the EC2 instance metadata service.
+     *
+     * @param code result code reported by the metadata service, {@code Success} on success.
+     * @param accessKeyId AWS access key id.
+     * @param secretAccessKey AWS secret access key.
+     * @param token temporary security token associated with the access key.
+     * @param expiration instant at which the credentials expire.
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record SecurityCredentials(@JsonProperty(value = "Code") String code,
                                       @JsonProperty(value = "AccessKeyId") String accessKeyId,
@@ -204,6 +219,15 @@ public class Ec2MetadataCredentialsProvider extends AbstractRefreshingCredential
                                       @JsonProperty(value = "Token") String token,
                                       @JsonProperty(value = "Expiration") Instant expiration)
             implements Credentials {
+        /**
+         * Creates the security credentials.
+         *
+         * @param code result code reported by the metadata service, {@code Success} on success.
+         * @param accessKeyId AWS access key id.
+         * @param secretAccessKey AWS secret access key.
+         * @param token temporary security token associated with the access key.
+         * @param expiration instant at which the credentials expire.
+         */
         public SecurityCredentials {
             Objects.requireNonNull(code);
             Objects.requireNonNull(accessKeyId);

@@ -9,14 +9,13 @@ package io.kroxylicious.it.testplugins;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 
-import org.apache.kafka.common.message.CreateTopicsRequestData;
-import org.apache.kafka.common.message.CreateTopicsResponseData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.protocol.Errors;
-
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.kroxylicious.kafka.common.message.CreateTopicsRequestData;
+import io.kroxylicious.kafka.common.message.CreateTopicsResponseData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.protocol.Errors;
 import io.kroxylicious.proxy.filter.CreateTopicsRequestFilter;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.FilterFactoryContext;
@@ -73,6 +72,8 @@ public class RejectingCreateTopicFilter implements CreateTopicsRequestFilter {
     }
 
     /**
+     * Configuration for the rejecting create-topic filter.
+     *
      * @param withCloseConnection If true, rejection will also close the connection
      * @param forwardingStyle forward style to use, allows the response to be delayed
      * @param respondWithError if true, a response containing an error will be returned to the client, otherwise

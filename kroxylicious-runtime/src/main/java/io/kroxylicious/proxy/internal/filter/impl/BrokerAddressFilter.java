@@ -13,21 +13,21 @@ import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 import java.util.function.ToIntFunction;
 
-import org.apache.kafka.common.message.DescribeClusterResponseData;
-import org.apache.kafka.common.message.DescribeClusterResponseData.DescribeClusterBroker;
-import org.apache.kafka.common.message.FetchResponseData;
-import org.apache.kafka.common.message.FindCoordinatorResponseData;
-import org.apache.kafka.common.message.FindCoordinatorResponseData.Coordinator;
-import org.apache.kafka.common.message.MetadataResponseData;
-import org.apache.kafka.common.message.MetadataResponseData.MetadataResponseBroker;
-import org.apache.kafka.common.message.ProduceResponseData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.message.ShareAcknowledgeResponseData;
-import org.apache.kafka.common.message.ShareFetchResponseData;
-import org.apache.kafka.common.protocol.ApiMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.kroxylicious.kafka.common.message.DescribeClusterResponseData;
+import io.kroxylicious.kafka.common.message.DescribeClusterResponseData.DescribeClusterBroker;
+import io.kroxylicious.kafka.common.message.FetchResponseData;
+import io.kroxylicious.kafka.common.message.FindCoordinatorResponseData;
+import io.kroxylicious.kafka.common.message.FindCoordinatorResponseData.Coordinator;
+import io.kroxylicious.kafka.common.message.MetadataResponseData;
+import io.kroxylicious.kafka.common.message.MetadataResponseData.MetadataResponseBroker;
+import io.kroxylicious.kafka.common.message.ProduceResponseData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.message.ShareAcknowledgeResponseData;
+import io.kroxylicious.kafka.common.message.ShareFetchResponseData;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 import io.kroxylicious.proxy.filter.DescribeClusterResponseFilter;
 import io.kroxylicious.proxy.filter.FetchResponseFilter;
 import io.kroxylicious.proxy.filter.FilterContext;
@@ -53,6 +53,12 @@ public class BrokerAddressFilter implements MetadataResponseFilter, FindCoordina
     private final EndpointGateway listenerModel;
     private final EndpointReconciler reconciler;
 
+    /**
+     * Creates a broker address filter.
+     *
+     * @param listenerModel the gateway used to compute the proxy address advertised for each upstream broker
+     * @param reconciler used to reconcile the virtual cluster's endpoints with the discovered upstream brokers
+     */
     public BrokerAddressFilter(EndpointGateway listenerModel, EndpointReconciler reconciler) {
         this.listenerModel = listenerModel;
         this.reconciler = reconciler;
@@ -63,10 +69,13 @@ public class BrokerAddressFilter implements MetadataResponseFilter, FindCoordina
         var nodeMap = new HashMap<Integer, HostPort>();
         for (MetadataResponseBroker broker : data.brokers()) {
             nodeMap.put(broker.nodeId(), new HostPort(broker.host(), broker.port()));
-            apply(context, broker, MetadataResponseBroker::nodeId, MetadataResponseBroker::host, MetadataResponseBroker::port, MetadataResponseBroker::setHost,
-                    MetadataResponseBroker::setPort);
         }
-        return doReconcileThenForwardResponse(header, data, context, nodeMap);
+        return doReconcileThenRewriteAndForward(header, data, context, nodeMap, () -> {
+            for (MetadataResponseBroker broker : data.brokers()) {
+                apply(context, broker, MetadataResponseBroker::nodeId, MetadataResponseBroker::host, MetadataResponseBroker::port, MetadataResponseBroker::setHost,
+                        MetadataResponseBroker::setPort);
+            }
+        });
     }
 
     @Override
@@ -75,10 +84,13 @@ public class BrokerAddressFilter implements MetadataResponseFilter, FindCoordina
         var nodeMap = new HashMap<Integer, HostPort>();
         for (DescribeClusterBroker broker : data.brokers()) {
             nodeMap.put(broker.brokerId(), new HostPort(broker.host(), broker.port()));
-            apply(context, broker, DescribeClusterBroker::brokerId, DescribeClusterBroker::host, DescribeClusterBroker::port, DescribeClusterBroker::setHost,
-                    DescribeClusterBroker::setPort);
         }
-        return doReconcileThenForwardResponse(header, data, context, nodeMap);
+        return doReconcileThenRewriteAndForward(header, data, context, nodeMap, () -> {
+            for (DescribeClusterBroker broker : data.brokers()) {
+                apply(context, broker, DescribeClusterBroker::brokerId, DescribeClusterBroker::host, DescribeClusterBroker::port, DescribeClusterBroker::setHost,
+                        DescribeClusterBroker::setPort);
+            }
+        });
     }
 
     @Override
@@ -178,13 +190,14 @@ public class BrokerAddressFilter implements MetadataResponseFilter, FindCoordina
         portSetter.accept(broker, advertisedAddress.port());
     }
 
-    private CompletionStage<ResponseFilterResult> doReconcileThenForwardResponse(ResponseHeaderData header, ApiMessage data, FilterContext context,
-                                                                                 Map<Integer, HostPort> nodeMap) {
+    private CompletionStage<ResponseFilterResult> doReconcileThenRewriteAndForward(ResponseHeaderData header, ApiMessage data, FilterContext context,
+                                                                                   Map<Integer, HostPort> nodeMap, Runnable rewrite) {
         return reconciler.reconcile(listenerModel, nodeMap).toCompletableFuture()
                 .thenCompose(u -> {
                     LOGGER.atDebug()
                             .addKeyValue("virtualCluster", listenerModel)
                             .log("Endpoint reconciliation complete");
+                    rewrite.run();
                     return context.responseFilterResultBuilder().forward(header, data).completed();
                 });
     }

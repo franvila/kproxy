@@ -31,10 +31,21 @@ import edu.umd.cs.findbugs.annotations.Nullable;
 
 import static com.github.nagyesta.lowkeyvault.testcontainers.LowkeyVaultContainerBuilder.lowkeyVault;
 
+/**
+ * An {@link AbstractAzureKeyVaultKmsTestKmsFacade} backed by containerised instances of
+ * <a href="https://github.com/nagyesta/lowkey-vault">Lowkey Vault</a> (an Azure Key Vault
+ * emulator) and a mock OAuth2 server, both run using Testcontainers.
+ */
 @SuppressWarnings("java:S112")
 public class AzureKeyVaultKmsTestKmsFacade extends AbstractAzureKeyVaultKmsTestKmsFacade {
 
+    /**
+     * Tenant id used to authenticate with the mock OAuth2 server.
+     */
     public static final String TENANT_ID = "identity";
+    /**
+     * Name of the vault created within the Lowkey Vault instance.
+     */
     public static final String KEY_VAULT_NAME = "default";
 
     @Nullable
@@ -42,7 +53,11 @@ public class AzureKeyVaultKmsTestKmsFacade extends AbstractAzureKeyVaultKmsTestK
     @Nullable
     private OauthServerContainer oauthServer;
 
+    /**
+     * Creates the facade.
+     */
     protected AzureKeyVaultKmsTestKmsFacade() {
+        // Intentionally empty
     }
 
     @Override
@@ -72,6 +87,11 @@ public class AzureKeyVaultKmsTestKmsFacade extends AbstractAzureKeyVaultKmsTestK
         }
     }
 
+    /**
+     * Creates and starts a Lowkey Vault container.
+     *
+     * @return the started container
+     */
     public static LowkeyVaultContainer startKeyVault() {
         final LowkeyVaultContainer lowkeyVaultContainer = createLowKeyContainer();
         lowkeyVaultContainer.start();
@@ -80,7 +100,7 @@ public class AzureKeyVaultKmsTestKmsFacade extends AbstractAzureKeyVaultKmsTestK
 
     @VisibleForTesting
     static LowkeyVaultContainer createLowKeyContainer() {
-        String image = "nagyesta/lowkey-vault:7.2.0-ubi10-minimal@sha256:79ad37ec96fc04b60c14a396f6b013b820b63c83614bac328e4ef9dacce5e59c";
+        String image = "nagyesta/lowkey-vault:7.3.74-ubi10-minimal@sha256:a1c0c0ddaecd7adeef30ee242fc3066ef3768b4f702a2a6b0409712294547b71";
         final DockerImageName imageName = DockerImageName.parse("mirror.gcr.io/" + image)
                 .asCompatibleSubstituteFor(DockerImageName.parse(image.substring(0, image.indexOf("@"))));
         final LowkeyVaultContainer lowkeyVaultContainer = lowkeyVault(imageName)

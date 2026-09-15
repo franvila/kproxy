@@ -21,10 +21,10 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.skodjob.testframe.LogCollector;
-import io.skodjob.testframe.LogCollectorBuilder;
-import io.skodjob.testframe.clients.KubeClient;
-import io.skodjob.testframe.clients.cmdClient.Kubectl;
+import io.skodjob.kubetest4j.LogCollector;
+import io.skodjob.kubetest4j.LogCollectorBuilder;
+import io.skodjob.kubetest4j.clients.KubeClient;
+import io.skodjob.kubetest4j.clients.cmdClient.Kubectl;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.nodepool.KafkaNodePool;
 import io.strimzi.api.kafka.model.user.KafkaUser;
@@ -34,7 +34,7 @@ import io.kroxylicious.systemtests.Environment;
 import io.kroxylicious.systemtests.utils.NamespaceUtils;
 
 /**
- * Class for encapsulating Test-Frame's {@link LogCollector}.
+ * Class for encapsulating KubeTest4j's {@link LogCollector}.
  * It provides methods for collecting logs for the test-cases -> collects Namespaces that are created for
  * particular test-class and test-case and builds the whole path to the logs.
  * The structure of the logs then looks like this:
@@ -95,6 +95,7 @@ import io.kroxylicious.systemtests.utils.NamespaceUtils;
  */
 public class TestLogCollector {
     private static final Logger LOGGER = LoggerFactory.getLogger(TestLogCollector.class);
+    private static final Object SINGLETON_LOCK = new Object();
 
     private static final String CURRENT_DATE_TIME;
     private final LogCollector logCollector;
@@ -119,11 +120,13 @@ public class TestLogCollector {
      *
      * @return the instance
      */
-    public static synchronized TestLogCollector getInstance() {
-        if (instance == null) {
-            instance = new TestLogCollector();
+    public static TestLogCollector getInstance() {
+        synchronized (SINGLETON_LOCK) {
+            if (instance == null) {
+                instance = new TestLogCollector();
+            }
+            return instance;
         }
-        return instance;
     }
 
     /**

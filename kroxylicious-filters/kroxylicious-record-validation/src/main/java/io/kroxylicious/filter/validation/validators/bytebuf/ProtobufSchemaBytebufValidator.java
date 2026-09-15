@@ -24,10 +24,8 @@ import io.apicurio.registry.resolver.SchemaResolver;
 import io.apicurio.registry.resolver.strategy.ArtifactReference;
 import io.apicurio.registry.utils.protobuf.schema.ProtobufSchema;
 import io.apicurio.schema.validation.protobuf.ProtobufSchemaParser;
-import io.apicurio.schema.validation.protobuf.ProtobufValidationResult;
 import io.apicurio.schema.validation.protobuf.ProtobufValidator;
 
-import io.kroxylicious.filter.validation.config.SchemaValidationConfig.WireFormatVersion;
 import io.kroxylicious.filter.validation.validators.Result;
 
 /**
@@ -51,8 +49,8 @@ class ProtobufSchemaBytebufValidator extends AbstractSchemaBytebufValidator {
     private final ProtobufValidator protobufValidator;
     private final Descriptors.Descriptor messageDescriptor;
 
-    ProtobufSchemaBytebufValidator(Map<String, Object> schemaResolverConfig, Long schemaId, WireFormatVersion wireFormatVersion) {
-        super(schemaId, wireFormatVersion);
+    ProtobufSchemaBytebufValidator(Map<String, Object> schemaResolverConfig, Long schemaId) {
+        super(schemaId);
         this.protobufValidator = new ProtobufValidator(schemaResolverConfig, Optional.of(ArtifactReference.fromContentId(schemaId)));
         this.messageDescriptor = resolveProtobufDescriptor(schemaResolverConfig, schemaId);
     }
@@ -93,9 +91,7 @@ class ProtobufSchemaBytebufValidator extends AbstractSchemaBytebufValidator {
             byte[] bytes = new byte[buffer.remaining()];
             buffer.get(bytes);
             DynamicMessage message = DynamicMessage.parseFrom(messageDescriptor, bytes);
-            ProtobufValidationResult protobufValidationResult = protobufValidator.validateByArtifactReference(message);
-            return protobufValidationResult.success() ? Result.VALID_RESULT_STAGE
-                    : CompletableFuture.completedFuture(new Result(false, protobufValidationResult.toString()));
+            return toResult(protobufValidator.validateByArtifactReference(message));
         }
         catch (InvalidProtocolBufferException e) {
             return CompletableFuture.completedFuture(new Result(false, "Failed to parse Protobuf message: " + e.getMessage()));
@@ -111,7 +107,7 @@ class ProtobufSchemaBytebufValidator extends AbstractSchemaBytebufValidator {
             if (messageTypes.isEmpty()) {
                 throw new IllegalArgumentException("Protobuf schema has no message types defined");
             }
-            return messageTypes.get(0);
+            return messageTypes.getFirst();
         }
         catch (IOException e) {
             throw new UncheckedIOException("Failed to resolve Protobuf schema", e);

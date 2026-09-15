@@ -38,16 +38,29 @@ import io.kroxylicious.authorizer.provider.acl.parser.AclRulesParser;
 import io.kroxylicious.authorizer.service.Authorizer;
 import io.kroxylicious.authorizer.service.AuthorizerService;
 import io.kroxylicious.authorizer.service.ResourceType;
-import io.kroxylicious.proxy.authentication.Principal;
+import io.kroxylicious.identity.Principal;
 import io.kroxylicious.proxy.plugin.Plugin;
 import io.kroxylicious.proxy.plugin.Plugins;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
+/**
+ * An {@link AuthorizerService} which builds an {@link AclAuthorizer} from a file of ACL rules.
+ * The rules file is named by the {@link AclAuthorizerConfig#aclFile()} configuration property
+ * and expresses the rules using naturalish language, according to a simple grammar
+ * (see {@code src/main/antlr4/io/kroxylicious/authorizer/provider/acl/parser/AclRules.g4}).
+ */
 @Plugin(configType = AclAuthorizerConfig.class)
 public class AclAuthorizerService implements AuthorizerService<AclAuthorizerConfig> {
 
     private @Nullable AclAuthorizer aclAuthorizer;
+
+    /**
+     * Constructs an AclAuthorizerService.
+     */
+    public AclAuthorizerService() {
+        // explicit ctor needed for javadoc
+    }
 
     @Override
     public void initialize(@Nullable AclAuthorizerConfig config1) {
@@ -297,7 +310,8 @@ public class AclAuthorizerService implements AuthorizerService<AclAuthorizerConf
             this.subjectBuilder = null;
         }
 
-        private <T> @Nullable Class<? extends T> lookupClass(String ident, Token identToken, Class<T> cls, String desc) {
+        @Nullable
+        private <T> Class<? extends T> lookupClass(String ident, Token identToken, Class<T> cls, String desc) {
             // look it up in the imports
             String localClassName = ident;
             var qualifiedClassName = this.localToQualified.get(localClassName);

@@ -11,15 +11,14 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
-import org.apache.kafka.common.protocol.types.RawTaggedField;
-
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.protocol.types.RawTaggedField;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.FilterFactoryContext;
 import io.kroxylicious.proxy.filter.RequestFilter;
@@ -97,6 +96,8 @@ public class RequestResponseMarkingFilter implements RequestFilter, ResponseFilt
     }
 
     /**
+     * Configuration for the request-response marking filter.
+     *
      * @param forwardingStyle
      * If true, forward will occur after an asynchronous request is made and a response received from the broker. */
     public record RequestResponseMarkingFilterConfig(String name, Set<ApiKeys> keysToMark, Set<RequestResponseMarkingFilterFactory.Direction> direction,

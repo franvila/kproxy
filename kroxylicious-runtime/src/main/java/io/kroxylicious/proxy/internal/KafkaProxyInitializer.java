@@ -6,8 +6,12 @@
 package io.kroxylicious.proxy.internal;
 
 import java.time.Duration;
+import java.util.EnumSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -26,8 +30,8 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.Future;
 
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
 import io.kroxylicious.proxy.authentication.TransportSubjectBuilder;
-import io.kroxylicious.proxy.bootstrap.FilterChainFactory;
 import io.kroxylicious.proxy.config.NettySettings;
 import io.kroxylicious.proxy.config.PluginFactoryRegistry;
 import io.kroxylicious.proxy.config.ProxyProtocolMode;
@@ -35,17 +39,31 @@ import io.kroxylicious.proxy.internal.codec.KafkaMessageListener;
 import io.kroxylicious.proxy.internal.codec.KafkaRequestDecoder;
 import io.kroxylicious.proxy.internal.codec.KafkaResponseEncoder;
 import io.kroxylicious.proxy.internal.metrics.MetricEmittingKafkaMessageListener;
-import io.kroxylicious.proxy.internal.net.Endpoint;
 import io.kroxylicious.proxy.internal.net.EndpointBinding;
 import io.kroxylicious.proxy.internal.net.EndpointBindingResolver;
 import io.kroxylicious.proxy.internal.net.EndpointReconciler;
+import io.kroxylicious.proxy.internal.routing.DirectRouting;
+import io.kroxylicious.proxy.internal.routing.DynamicRouting;
+import io.kroxylicious.proxy.internal.routing.RouteDescriptor;
+import io.kroxylicious.proxy.internal.routing.RouteDispatcher;
+import io.kroxylicious.proxy.internal.routing.RoutingHandler;
+import io.kroxylicious.proxy.internal.routing.RoutingTerminalHandler;
 import io.kroxylicious.proxy.internal.util.Metrics;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
+import io.kroxylicious.proxy.router.Router;
+import io.kroxylicious.proxy.service.HostPort;
 import io.kroxylicious.proxy.tag.VisibleForTesting;
 
 import edu.umd.cs.findbugs.annotations.CheckReturnValue;
 import edu.umd.cs.findbugs.annotations.Nullable;
 
+import static io.kroxylicious.proxy.internal.util.NettyFutures.logFailure;
+
+/**
+ * Initializes the Netty pipeline for each accepted client connection: optionally installs
+ * PROXY-protocol detection and TLS/SNI handling, resolves the {@link EndpointBinding} for the
+ * connection, and then adds the Kafka codecs, filter chain and frontend handler.
+ */
 public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaProxyInitializer.class);
@@ -53,6 +71,7 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
     private static final ChannelInboundHandlerAdapter LOGGING_INBOUND_ERROR_HANDLER = new LoggingInboundErrorHandler();
     @VisibleForTesting
     static final String LOGGING_INBOUND_ERROR_HANDLER_NAME = "loggingInboundErrorHandler";
+    /** Pipeline name of the idle-state handler applied before the session has authenticated. */
     public static final String PRE_SESSION_IDLE_HANDLER = "preSessionIdleHandler";
 
     private final ProxyProtocolMode proxyProtocolMode;
@@ -60,7 +79,6 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
     private final EndpointBindingResolver bindingResolver;
     private final EndpointReconciler endpointReconciler;
     private final PluginFactoryRegistry pfr;
-    private final FilterChainFactory filterChainFactory;
     private final ApiVersionsServiceImpl apiVersionsService;
     @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
     private final Optional<NettySettings> proxyNettySettings;
@@ -68,10 +86,21 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
     @Nullable
     private final Long unauthenticatedIdleMillis;
     private final VirtualClusterRegistry virtualClusterRegistry;
+    private final ConcurrentHashMap<DynamicRouting, ConcurrentHashMap<Integer, HostPort>> sharedNodeAddressCache = new ConcurrentHashMap<>();
 
-    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
-    public KafkaProxyInitializer(FilterChainFactory filterChainFactory,
-                                 PluginFactoryRegistry pfr,
+    /**
+     * Creates an initializer for client connections accepted on a proxy listening port.
+     * @param pfr registry used to instantiate plugins referenced by the configuration
+     * @param tls whether the listening port serves TLS connections
+     * @param bindingResolver resolver mapping the accepted endpoint (and SNI hostname, if any) to an {@link EndpointBinding}
+     * @param endpointReconciler reconciler notified of upstream cluster topology changes
+     * @param proxyProtocolMode whether/how the PROXY protocol is accepted on this port
+     * @param apiVersionsService service used to intersect API versions with those supported by the proxy
+     * @param proxyNettySettings optional Netty tuning settings (e.g. idle timeouts)
+     * @param virtualClusterRegistry registry tracking active connections per virtual cluster
+     */
+    @SuppressWarnings({ "OptionalUsedAsFieldOrParameterType", "java:S107" })
+    public KafkaProxyInitializer(PluginFactoryRegistry pfr,
                                  boolean tls,
                                  EndpointBindingResolver bindingResolver,
                                  EndpointReconciler endpointReconciler,
@@ -84,7 +113,6 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
         this.proxyProtocolMode = proxyProtocolMode;
         this.tls = tls;
         this.bindingResolver = bindingResolver;
-        this.filterChainFactory = Objects.requireNonNull(filterChainFactory, "filterChainFactory");
         this.apiVersionsService = apiVersionsService;
         this.proxyNettySettings = proxyNettySettings;
         this.clientToProxyErrorCounter = Metrics.clientToProxyErrorCounter("", null).withTags();
@@ -123,7 +151,7 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
             @Override
             public void channelActive(ChannelHandlerContext ctx) {
 
-                bindingResolver.resolve(Endpoint.createEndpoint(ch, tls), null)
+                bindingResolver.resolve(ch, null)
                         .handle((binding, t) -> {
                             if (t != null) {
                                 ctx.fireExceptionCaught(t);
@@ -151,14 +179,13 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
         LOGGER.atDebug().log("Adding SSL/SNI handler");
         ch.pipeline().addLast("sniResolver", new SniHandler((sniHostname, promise) -> {
             try {
-                Endpoint endpoint = Endpoint.createEndpoint(ch, tls);
-                var stage = bindingResolver.resolve(endpoint, sniHostname);
+                var stage = bindingResolver.resolve(ch, sniHostname);
                 // completes the netty promise when then resolution completes (success/otherwise).
                 stage.handle((binding, t) -> {
                     try {
                         if (t != null) {
                             LOGGER.atWarn()
-                                    .addKeyValue("endpoint", endpoint)
+                                    .addKeyValue("channel", ch)
                                     .addKeyValue("sniHostname", sniHostname)
                                     .addKeyValue("error", t.getMessage())
                                     .log("Exception resolving Virtual Cluster Binding");
@@ -198,7 +225,7 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
                     // or that the virtual cluster is somehow not configured for TLS. All we can do is close the
                     // connection.
                     clientToProxyErrorCounter.increment();
-                    ctx.close();
+                    ctx.close().addListener(logFailure(LOGGER, "close after SNI/TLS lookup failure"));
                 }
 
             }
@@ -246,8 +273,6 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
         }
         var frontendHandler = new KafkaProxyFrontendHandler(
                 pfr,
-                filterChainFactory,
-                virtualCluster.getFilters(),
                 endpointReconciler,
                 apiVersionsService,
                 dp,
@@ -256,14 +281,60 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
                 proxyNettySettings);
 
         pipeline.addLast("frontendHandler", frontendHandler);
-        // Filter Handlers will be installed at this point in the pipeline by KafkaProxyFrontendHandler when the client channel fires channelActive()
-        pipeline.addLast("filterChainCompletionHandler", new FilterChainCompletionHandler(clientConnectionStateMachine));
+        switch (virtualCluster.routing()) {
+            case DynamicRouting dr -> {
+                Router router = virtualCluster.createRouter();
+                Map<ApiKeys, String> staticRoutes = router.staticRoutes();
+                Set<ApiKeys> decodedKeys = computeDecodedKeysForRouter(staticRoutes, dr.topLevelRouteDescriptors());
+                dp.setRouterDecodingRequirements(decodedKeys);
+
+                var sharedAddresses = sharedNodeAddressCache.computeIfAbsent(dr, k -> new ConcurrentHashMap<>());
+                var routingHandler = RoutingHandler.topLevel(
+                        router,
+                        dr.topLevelRouteDescriptors(),
+                        staticRoutes,
+                        sharedAddresses,
+                        clientConnectionStateMachine,
+                        dr.nodeIdMapping(),
+                        binding.nodeId());
+                clientConnectionStateMachine.setRouterActive();
+                clientConnectionStateMachine.setUpstreamAddressResolver(
+                        virtualNodeId -> routingHandler.resolveRouterNodeAddress(virtualNodeId)
+                                .or(() -> endpointReconciler.upstreamAddress(
+                                        clientConnectionStateMachine.endpointGateway(), virtualNodeId)));
+                pipeline.addLast("routerDispatchHandler", routingHandler);
+                pipeline.addLast("routingTerminalHandler", new RoutingTerminalHandler(clientConnectionStateMachine));
+            }
+            case DirectRouting ignored -> pipeline.addLast("filterChainCompletionHandler",
+                    new FilterChainCompletionHandler(clientConnectionStateMachine));
+        }
         addLoggingErrorHandler(pipeline);
 
         LOGGER.atDebug()
                 .addKeyValue("channelId", ch::toString)
                 .addKeyValue("pipeline", pipeline)
                 .log("Initial pipeline");
+    }
+
+    /**
+     * Only exclude an API key from decoding when all paths between the VC and the target
+     * cluster are statically routed. At init time we don't have nested router instances,
+     * so routes targeting nested routers are not provably fully static and must remain
+     * decoded. API keys whose responses carry node IDs are always decoded for translation.
+     */
+    static Set<ApiKeys> computeDecodedKeysForRouter(Map<ApiKeys, String> staticRoutes,
+                                                    Map<String, RouteDescriptor> routeDescriptors) {
+        Set<ApiKeys> decodedKeys = EnumSet.allOf(ApiKeys.class);
+        if (!staticRoutes.isEmpty()) {
+            for (var entry : staticRoutes.entrySet()) {
+                RouteDescriptor rd = routeDescriptors.get(entry.getValue());
+                if (rd != null && rd.targetsCluster()) {
+                    decodedKeys.remove(entry.getKey());
+                }
+            }
+        }
+        decodedKeys.addAll(RouteDispatcher.NODE_ID_TRANSLATION_APIS);
+        return decodedKeys;
     }
 
     private KafkaMessageListener buildMetricsMessageListenerForDecode(EndpointBinding binding, VirtualClusterModel virtualCluster) {
@@ -288,7 +359,7 @@ public class KafkaProxyInitializer extends ChannelInitializer<Channel> {
         LOGGER.atInfo()
                 .addKeyValue("virtualCluster", clusterName)
                 .log("Rejecting new connection - virtual cluster is draining");
-        ch.close();
+        ch.close().addListener(logFailure(LOGGER, "close rejected connection during virtual cluster drain"));
     }
 
     private static void addLoggingErrorHandler(ChannelPipeline pipeline) {

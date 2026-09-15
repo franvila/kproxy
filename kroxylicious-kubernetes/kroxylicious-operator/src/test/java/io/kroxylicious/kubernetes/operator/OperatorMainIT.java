@@ -42,11 +42,13 @@ import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxyStatus;
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaService;
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaServiceBuilder;
 import io.kroxylicious.kubernetes.api.v1alpha1.VirtualKafkaCluster;
+import io.kroxylicious.testing.operator.OperatorTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
 
-@EnabledIf(value = "io.kroxylicious.kubernetes.operator.OperatorTestUtils#isKubeClientAvailable", disabledReason = "no viable kube client available")
+@EnabledIf(value = "io.kroxylicious.testing.operator.OperatorTestUtils#isKubeClientAvailable", disabledReason = "no viable kube client available")
+@SuppressWarnings("java:S8692") // ITs run against a live API server; a fixed clock would be misleading since time is not controlled
 class OperatorMainIT {
     // This is an IT because it depends on having a running Kube cluster
 
@@ -82,7 +84,7 @@ class OperatorMainIT {
     @BeforeEach
     void beforeEach() throws Exception {
         managementServer = createManagementServer();
-        operatorMain = new OperatorMain(managementServer, null, null);
+        operatorMain = new OperatorMain(managementServer, null, new ControllerConfigurer());
     }
 
     @AfterEach
@@ -247,7 +249,8 @@ class OperatorMainIT {
                 .create();
 
         managementServer = createManagementServer();
-        operatorMain = new OperatorMain(managementServer, null, Set.of(watched.getMetadata().getName()));
+        var configurer = new ControllerConfigurer(Set.of(watched.getMetadata().getName()), null);
+        operatorMain = new OperatorMain(managementServer, null, configurer);
 
         // When
         operatorMain.start();

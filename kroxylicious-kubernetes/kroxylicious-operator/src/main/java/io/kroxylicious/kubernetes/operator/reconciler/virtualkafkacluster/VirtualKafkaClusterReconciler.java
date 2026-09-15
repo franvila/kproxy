@@ -97,6 +97,7 @@ public final class VirtualKafkaClusterReconciler implements
     static final String INGRESSES_EVENT_SOURCE_NAME = "ingresses";
     static final String FILTERS_EVENT_SOURCE_NAME = "filters";
     static final String SECRETS_EVENT_SOURCE_NAME = "secrets";
+    /** Event source name for ConfigMap-based trust anchor references. */
     public static final String CONFIG_MAPS_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME = "configmapsTrustAnchorRef";
     static final String SECRET_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME = "secretsTrustAnchorRef";
     static final String KUBERNETES_SERVICES_EVENT_SOURCE_NAME = "kubernetesServices";
@@ -109,12 +110,23 @@ public final class VirtualKafkaClusterReconciler implements
     private final DependencyResolver resolver;
     private final SharedInformerManager sharedInformerManager;
 
+    /**
+     * Constructs the reconciler with the given clock, dependency resolver, and shared informer manager.
+     * @param clock the clock used for status timestamps
+     * @param resolver the dependency resolver for custom resource references
+     * @param sharedInformerManager the shared informer manager for watch coordination
+     */
     public VirtualKafkaClusterReconciler(Clock clock, DependencyResolver resolver, SharedInformerManager sharedInformerManager) {
         this.statusFactory = new VirtualKafkaClusterStatusFactory(clock);
         this.resolver = resolver;
         this.sharedInformerManager = sharedInformerManager;
     }
 
+    /**
+     * Creates a new status factory for VirtualKafkaCluster resources.
+     * @param clock the clock used for status timestamps
+     * @return a new status factory
+     */
     public static StatusFactory<VirtualKafkaCluster> newStatusFactory(Clock clock) {
         return new VirtualKafkaClusterStatusFactory(clock);
     }
@@ -399,9 +411,8 @@ public final class VirtualKafkaClusterReconciler implements
                 VirtualKafkaCluster.class)
                 .withName(PROXY_EVENT_SOURCE_NAME)
                 .withPrimaryToSecondaryMapper((VirtualKafkaCluster cluster) -> ResourcesUtil.localRefAsResourceId(cluster, cluster.getSpec().getProxyRef()))
-                .withSecondaryToPrimaryMapper(proxy -> ResourcesUtil.findReferrers(context,
+                .withSecondaryToPrimaryMapper(proxy -> ResourcesUtil.findKnownPrimariesOf(context,
                         proxy,
-                        VirtualKafkaCluster.class,
                         cluster -> Optional.of(cluster.getSpec().getProxyRef())))
                 .build();
 
@@ -411,9 +422,8 @@ public final class VirtualKafkaClusterReconciler implements
                 PROXY_CONFIG_STATE_SOURCE_NAME,
                 sharedConfigMapInformer,
                 VirtualKafkaClusterReconciler::toConfigStateResourceName,
-                configMap -> ResourcesUtil.findReferrers(context,
+                configMap -> ResourcesUtil.findKnownPrimariesOf(context,
                         configMap,
-                        VirtualKafkaCluster.class,
                         cluster -> Optional.of(new AnyLocalRefBuilder().withGroup("").withKind("ConfigMap")
                                 .withName(cluster.getSpec().getProxyRef().getName() + CONFIG_STATE_CONFIG_MAP_SUFFIX)
                                 .build())),
@@ -528,7 +538,7 @@ public final class VirtualKafkaClusterReconciler implements
     @Nullable
     private VirtualKafkaCluster checkTlsConfigConsistency(Context<VirtualKafkaCluster> context, VirtualKafkaCluster cluster, Ingresses clusterIngress) {
         var ingressName = Objects.requireNonNull(clusterIngress.getIngressRef().getName());
-        var proxyIngressOpt = ResourcesUtil.findOnlyResourceNamed(ingressName, context.getSecondaryResources(KafkaProxyIngress.class));
+        var proxyIngressOpt = context.getSecondaryResource(KafkaProxyIngress.class, INGRESSES_EVENT_SOURCE_NAME, ingressName);
 
         if (proxyIngressOpt.isPresent()) {
             KafkaProxyIngress proxyIngress = proxyIngressOpt.get();

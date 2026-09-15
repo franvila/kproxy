@@ -6,41 +6,62 @@
 
 package io.kroxylicious.kubernetes.operator.reconciler.kafkaservice;
 
-import java.util.List;
+import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
-import io.fabric8.kubernetes.api.model.KubernetesResourceList;
-import io.fabric8.kubernetes.client.KubernetesClient;
 import io.javaoperatorsdk.operator.api.reconciler.EventSourceContext;
 import io.javaoperatorsdk.operator.processing.event.ResourceID;
+import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
 
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaService;
+import io.kroxylicious.kubernetes.api.v1alpha1.KafkaServiceBuilder;
 
 import static io.kroxylicious.kubernetes.operator.reconciler.kafkaservice.MapperTestSupport.KAFKA;
 import static io.kroxylicious.kubernetes.operator.reconciler.kafkaservice.MapperTestSupport.SERVICE;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class StrimziKafkaSecondaryToKafkaServicePrimaryMapperTest {
 
     @Test
     void canMapFromStrimziKafkaToKafkaService() {
         // Given
-        EventSourceContext<KafkaService> eventSourceContext = mock();
-        KubernetesClient client = mock();
-        when(eventSourceContext.getClient()).thenReturn(client);
-
-        KubernetesResourceList<KafkaService> mockList = MapperTestSupport.mockKafkaServiceListOperation(client);
-        when(mockList.getItems()).thenReturn(List.of(SERVICE));
-
-        var mapper = new StrimziKafkaSecondaryToKafkaServicePrimaryMapper(eventSourceContext);
+        EventSourceContext<KafkaService> context = MapperTestSupport.mockContextContaining(SERVICE);
+        var mapper = new StrimziKafkaSecondaryToKafkaServicePrimaryMapper(context);
 
         // When
-        var primaryResourceIDs = mapper.toPrimaryResourceIDs(KAFKA);
+        Set<ResourceID> primaryResourceIDs = mapper.toPrimaryResourceIDs(KAFKA);
 
         // Then
         assertThat(primaryResourceIDs).containsExactly(ResourceID.fromResource(SERVICE));
     }
+
+    @Test
+    void canMapFromNamespacedStrimziKafkaToKafkaServiceInDifferentNamespace() {
+        // Given
+        KafkaService service = new KafkaServiceBuilder(SERVICE)
+                .editMetadata()
+                .withNamespace("my-proxy")
+                .endMetadata()
+                .editSpec()
+                .editStrimziKafkaRef()
+                .withNamespace("my-kafka")
+                .endStrimziKafkaRef()
+                .endSpec()
+                .build();
+        var kafka = new KafkaBuilder(KAFKA)
+                .editMetadata()
+                .withNamespace("my-kafka")
+                .endMetadata()
+                .build();
+        EventSourceContext<KafkaService> context = MapperTestSupport.mockContextContaining(service);
+        var mapper = new StrimziKafkaSecondaryToKafkaServicePrimaryMapper(context);
+
+        // When
+        Set<ResourceID> primaryResourceIDs = mapper.toPrimaryResourceIDs(kafka);
+
+        // Then
+        assertThat(primaryResourceIDs).containsExactly(ResourceID.fromResource(service));
+    }
+
 }

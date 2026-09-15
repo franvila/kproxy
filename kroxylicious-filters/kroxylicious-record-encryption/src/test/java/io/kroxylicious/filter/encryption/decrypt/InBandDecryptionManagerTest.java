@@ -24,23 +24,12 @@ import java.util.stream.Stream;
 
 import javax.crypto.SecretKey;
 
-import org.apache.kafka.common.compress.Compression;
-import org.apache.kafka.common.header.Header;
-import org.apache.kafka.common.header.internals.RecordHeader;
-import org.apache.kafka.common.record.MemoryRecords;
-import org.apache.kafka.common.record.MutableRecordBatch;
-import org.apache.kafka.common.record.Record;
-import org.apache.kafka.common.record.RecordBatch;
-import org.apache.kafka.common.record.TimestampType;
-import org.apache.kafka.common.utils.ByteBufferOutputStream;
-import org.apache.kafka.common.utils.ByteUtils;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 
 import io.kroxylicious.filter.encryption.EncryptorCreationException;
@@ -57,6 +46,16 @@ import io.kroxylicious.filter.encryption.dek.DekManager;
 import io.kroxylicious.filter.encryption.encrypt.EncryptionDekCache;
 import io.kroxylicious.filter.encryption.encrypt.EncryptionScheme;
 import io.kroxylicious.filter.encryption.encrypt.InBandEncryptionManager;
+import io.kroxylicious.kafka.common.compress.Compression;
+import io.kroxylicious.kafka.common.header.Header;
+import io.kroxylicious.kafka.common.header.internals.RecordHeader;
+import io.kroxylicious.kafka.common.record.TimestampType;
+import io.kroxylicious.kafka.common.record.internal.MemoryRecords;
+import io.kroxylicious.kafka.common.record.internal.MutableRecordBatch;
+import io.kroxylicious.kafka.common.record.internal.Record;
+import io.kroxylicious.kafka.common.record.internal.RecordBatch;
+import io.kroxylicious.kafka.common.utils.ByteBufferOutputStream;
+import io.kroxylicious.kafka.common.utils.ByteUtils;
 import io.kroxylicious.kms.provider.kroxylicious.inmemory.InMemoryEdek;
 import io.kroxylicious.kms.provider.kroxylicious.inmemory.InMemoryKms;
 import io.kroxylicious.kms.provider.kroxylicious.inmemory.UnitTestingKmsService;
@@ -73,6 +72,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 class InBandDecryptionManagerTest {
@@ -451,7 +451,7 @@ class InBandDecryptionManagerTest {
     void dekCreationRetryFailurePropagatedToEncryptCompletionStage() {
         InMemoryKms kms = getInMemoryKms();
         var kekId = kms.generateKey();
-        InMemoryKms spyKms = Mockito.spy(kms);
+        InMemoryKms spyKms = spy(kms);
         when(spyKms.generateDekPair(kekId)).thenReturn(CompletableFuture.failedFuture(new EncryptorCreationException("failed to create that DEK")));
         var encryptionManager = createEncryptionManager(spyKms, 500_000);
 
@@ -472,7 +472,7 @@ class InBandDecryptionManagerTest {
     void edekDecryptionRetryFailurePropagatedToDecryptCompletionStage() {
         InMemoryKms kms = getInMemoryKms();
         var kekId = kms.generateKey();
-        InMemoryKms spyKms = Mockito.spy(kms);
+        InMemoryKms spyKms = spy(kms);
         doReturn(CompletableFuture.failedFuture(new KmsException("failed to create that DEK"))).when(spyKms).decryptEdek(any());
 
         var encryptionManager = createEncryptionManager(spyKms, 500_000);
@@ -499,7 +499,7 @@ class InBandDecryptionManagerTest {
     void afterWeFailToLoadADekTheNextEncryptionAttemptCanSucceed() {
         InMemoryKms kms = getInMemoryKms();
         var kekId = kms.generateKey();
-        InMemoryKms spyKms = Mockito.spy(kms);
+        InMemoryKms spyKms = spy(kms);
         when(spyKms.generateDekPair(kekId)).thenReturn(CompletableFuture.failedFuture(new KmsException("failed to create that DEK")));
 
         var encryptionManager = createEncryptionManager(spyKms, 50_000);
@@ -793,7 +793,7 @@ class InBandDecryptionManagerTest {
         var kekId1 = kms.generateKey();
         var kekId2 = kms.generateKey();
 
-        var spyKms = Mockito.spy(kms);
+        var spyKms = spy(kms);
 
         var encryptionManager = createEncryptionManager(kms, 500_000);
         var decryptionManager = createDecryptionManager(kms);

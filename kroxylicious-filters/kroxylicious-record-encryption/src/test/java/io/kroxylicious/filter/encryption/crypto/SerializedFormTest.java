@@ -14,21 +14,20 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
-import org.apache.kafka.common.header.Header;
-import org.apache.kafka.common.header.internals.RecordHeader;
-import org.apache.kafka.common.record.Record;
-import org.apache.kafka.common.record.RecordBatch;
-import org.apache.kafka.common.utils.ByteUtils;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.Mockito;
 
 import io.kroxylicious.filter.encryption.config.AadSpec;
 import io.kroxylicious.filter.encryption.config.RecordField;
 import io.kroxylicious.filter.encryption.dek.CipherSpecResolver;
 import io.kroxylicious.filter.encryption.dek.DekManager;
 import io.kroxylicious.filter.encryption.dek.NullCipherManager;
+import io.kroxylicious.kafka.common.header.Header;
+import io.kroxylicious.kafka.common.header.internals.RecordHeader;
+import io.kroxylicious.kafka.common.record.internal.Record;
+import io.kroxylicious.kafka.common.record.internal.RecordBatch;
+import io.kroxylicious.kafka.common.utils.ByteUtils;
 import io.kroxylicious.kms.service.DekPair;
 import io.kroxylicious.kms.service.DestroyableRawSecretKey;
 import io.kroxylicious.kms.service.Kms;
@@ -40,6 +39,7 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests that the serialization done by wrapper and parcel are what we'd expect,
@@ -176,11 +176,11 @@ class SerializedFormTest {
         NullCipherManager cm = new NullCipherManager(cipherId, constantParamsSize, cipherParamsBytes);
         Aad aad = new MyAad(aadId);
 
-        Kms<byte[], byte[]> kms = Mockito.mock(Kms.class);
+        Kms<byte[], byte[]> kms = mock(Kms.class);
         DekPair dekPair = new DekPair(HexFormat.of().parseHex(edekHex), DestroyableRawSecretKey.takeOwnershipOf(HexFormat.of().parseHex("0dec"), "foo"));
         doReturn(CompletableFuture.completedFuture(dekPair)).when(kms).generateDekPair(kekId);
         doReturn(new ByteArraySerde()).when(kms).edekSerde();
-        KmsService<Object, byte[], byte[]> kmsService = Mockito.mock(KmsService.class);
+        KmsService<Object, byte[], byte[]> kmsService = mock(KmsService.class);
         doReturn(kms).when(kmsService).buildKms();
         var dm = new DekManager<>(kms, 1);
 

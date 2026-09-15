@@ -9,14 +9,11 @@ package io.kroxylicious.filter.validation.validators.bytebuf;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import io.apicurio.registry.resolver.strategy.ArtifactReference;
-import io.apicurio.schema.validation.json.JsonValidationResult;
 import io.apicurio.schema.validation.json.JsonValidator;
 
-import io.kroxylicious.filter.validation.config.SchemaValidationConfig.WireFormatVersion;
 import io.kroxylicious.filter.validation.validators.Result;
 
 /**
@@ -30,15 +27,13 @@ import io.kroxylicious.filter.validation.validators.Result;
 class JsonSchemaBytebufValidator extends AbstractSchemaBytebufValidator {
     private final JsonValidator jsonValidator;
 
-    JsonSchemaBytebufValidator(Map<String, Object> schemaResolverConfig, Long schemaId, WireFormatVersion wireFormatVersion) {
-        super(schemaId, wireFormatVersion);
+    JsonSchemaBytebufValidator(Map<String, Object> schemaResolverConfig, Long schemaId) {
+        super(schemaId);
         this.jsonValidator = new JsonValidator(schemaResolverConfig, Optional.of(ArtifactReference.fromContentId(schemaId)));
     }
 
     @Override
     protected CompletionStage<Result> doValidate(ByteBuffer buffer) {
-        JsonValidationResult jsonValidationResult = jsonValidator.validateByArtifactReference(buffer);
-        return jsonValidationResult.success() ? Result.VALID_RESULT_STAGE
-                : CompletableFuture.completedFuture(new Result(false, jsonValidationResult.toString()));
+        return toResult(jsonValidator.validateByArtifactReference(buffer));
     }
 }

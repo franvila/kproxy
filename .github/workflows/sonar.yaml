@@ -15,7 +15,7 @@ jobs:
     if: github.event.workflow_run && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
@@ -25,10 +25,9 @@ jobs:
         run: |
           echo "SONAR_TOKEN_SET=$(test ${SONAR_TOKEN} && echo true)" >> $GITHUB_ENV
       - name: Download PR number artifact
-        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         if: env.SONAR_TOKEN_SET == 'true'
         with:
-          workflow: Build
           run_id: ${{ github.event.workflow_run.id }}
           name: PR_NUMBER
       - name: Read PR_NUMBER.txt
@@ -38,7 +37,7 @@ jobs:
         with:
           path: ./PR_NUMBER.txt
       - name: Request GitHub API for PR data
-        uses: octokit/request-action@45eef13998ff762839b0a0de9bbcf41970fd056d
+        uses: octokit/request-action@b66ca9cd744693e9c29b490fc08831ab66c4a970
         if: env.SONAR_TOKEN_SET == 'true'
         id: get_pr_data
         with:
@@ -60,12 +59,13 @@ jobs:
             echo "SANITIZED_HEAD_REF=${HEAD_BRANCH}" >> $GITHUB_ENV
           fi
         shell: bash
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         if: env.SONAR_TOKEN_SET == 'true'
         with:
           repository: ${{ github.event.workflow_run.head_repository.full_name }}
           ref: ${{env.SANITIZED_HEAD_REF}}
           fetch-depth: 0
+          allow-unsafe-pr-checkout: true
       - name: Checkout base branch
         if: env.SONAR_TOKEN_SET == 'true'
         run: |
@@ -75,15 +75,15 @@ jobs:
           git checkout "origin/${{env.SANITIZED_HEAD_REF}}"
           git clean -ffdx && git reset --hard HEAD
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a
         if: env.SONAR_TOKEN_SET == 'true'
       - name: Setup Java
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
         if: env.SONAR_TOKEN_SET == 'true'
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
       - name: Cache SonarCloud packages
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: env.SONAR_TOKEN_SET == 'true'
         with:
           path: ~/.sonar/cache
@@ -100,12 +100,26 @@ jobs:
             install
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: SonarCloud scan on PR for the Proxy Runtime
-        if: env.SONAR_TOKEN_SET == 'true'
+      - name: SonarCloud scan on PR for the Proxy Core
+        if: env.SONAR_TOKEN_SET == 'true' && hashFiles('scripts/ci-build-functions.sh') != ''
         run: |
+          source scripts/ci-build-functions.sh
+          run_sonar "${PROXY_PROFILES}" 'Proxy Runtime' 'kroxylicious_kroxylicious' \
+            -Djapicmp.skip=true \
+            -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
+            -Dsonar.pullrequest.key=${{ fromJson(steps.get_pr_data.outputs.data).number }} \
+            -Dsonar.pullrequest.branch=${{ fromJson(steps.get_pr_data.outputs.data).head.ref }} \
+            -Dsonar.pullrequest.base=${{ fromJson(steps.get_pr_data.outputs.data).base.ref }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: SonarCloud scan on PR for the Proxy Core (legacy release branches)
+        if: env.SONAR_TOKEN_SET == 'true' && hashFiles('scripts/ci-build-functions.sh') == ''
+        run: |
+          # Old release branches: profile-based build not available; exclude operator modules instead
           mvn --batch-mode \
             --activate-profiles 'ci,!qa' \
-            --projects ''!:kroxylicious-operator,!:kroxylicious-operator-dist'' \
+            --projects '!:kroxylicious-operator,!:kroxylicious-operator-dist,!:kroxylicious-kubernetes-api,!:kroxylicious-operator-test-support' \
             -Derrorprone.skip=true \
             -DskipITs=true \
             -Djapicmp.skip=true \
@@ -113,18 +127,53 @@ jobs:
             -Dsonar.pullrequest.key=${{ fromJson(steps.get_pr_data.outputs.data).number }} \
             -Dsonar.pullrequest.branch=${{ fromJson(steps.get_pr_data.outputs.data).head.ref }} \
             -Dsonar.pullrequest.base=${{ fromJson(steps.get_pr_data.outputs.data).base.ref }} \
-            clean \
             verify \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: SonarCloud scan on PR for the Operator
-        if: env.SONAR_TOKEN_SET == 'true'
+        if: env.SONAR_TOKEN_SET == 'true' && hashFiles('scripts/ci-build-functions.sh') != ''
         run: |
+          source scripts/ci-build-functions.sh
+          if [ -f "kroxylicious-kubernetes/pom.xml" ]; then
+            run_sonar "${KUBERNETES_PROFILES}" 'Kroxylicious Operator' 'kroxylicious_operator' \
+              -Djapicmp.skip=true \
+              -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
+              -Dsonar.pullrequest.key=${{ fromJson(steps.get_pr_data.outputs.data).number }} \
+              -Dsonar.pullrequest.branch=${{ fromJson(steps.get_pr_data.outputs.data).head.ref }} \
+              -Dsonar.pullrequest.base=${{ fromJson(steps.get_pr_data.outputs.data).base.ref }}
+          else
+            # Old release branches: operator was not under kroxylicious-kubernetes/
+            mvn --batch-mode \
+              --activate-profiles 'ci,!qa' \
+              --projects ':kroxylicious-operator,:kroxylicious-parent,:kroxylicious-operator-dist' \
+              -Derrorprone.skip=true \
+              -DskipITs=true \
+              -Djapicmp.skip=true \
+              -Dsonar.projectName='Kroxylicious Operator' \
+              -Dsonar.projectKey='kroxylicious_operator' \
+              -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }} \
+              -Dsonar.pullrequest.key=${{ fromJson(steps.get_pr_data.outputs.data).number }} \
+              -Dsonar.pullrequest.branch=${{ fromJson(steps.get_pr_data.outputs.data).head.ref }} \
+              -Dsonar.pullrequest.base=${{ fromJson(steps.get_pr_data.outputs.data).base.ref }} \
+              verify \
+              org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
+          fi
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: SonarCloud scan on PR for the Operator (legacy release branches)
+        if: env.SONAR_TOKEN_SET == 'true' && hashFiles('scripts/ci-build-functions.sh') == ''
+        run: |
+          # Old release branches: profile-based build not available
+          PROJECTS=':kroxylicious-operator,:kroxylicious-parent,:kroxylicious-operator-dist'
+          if [ -f "kroxylicious-kubernetes/pom.xml" ]; then
+            PROJECTS=":kroxylicious-operator,:kroxylicious-operator-test-support,:kroxylicious-kubernetes-parent,:kroxylicious-parent,:kroxylicious-operator-dist"
+          fi
           mvn --batch-mode \
             --activate-profiles 'ci,!qa' \
-            --projects ':kroxylicious-operator,:kroxylicious-kubernetes-parent,:kroxylicious-parent,:kroxylicious-operator-dist' \
+            --projects "$PROJECTS" \
             -Derrorprone.skip=true \
             -DskipITs=true \
             -Djapicmp.skip=true \
@@ -134,7 +183,6 @@ jobs:
             -Dsonar.pullrequest.key=${{ fromJson(steps.get_pr_data.outputs.data).number }} \
             -Dsonar.pullrequest.branch=${{ fromJson(steps.get_pr_data.outputs.data).head.ref }} \
             -Dsonar.pullrequest.base=${{ fromJson(steps.get_pr_data.outputs.data).base.ref }} \
-            clean \
             verify \
             org.sonarsource.scanner.maven:sonar-maven-plugin:5.5.0.6356:sonar
         env:

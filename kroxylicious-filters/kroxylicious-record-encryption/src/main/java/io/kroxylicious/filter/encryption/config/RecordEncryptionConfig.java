@@ -17,6 +17,15 @@ import io.kroxylicious.proxy.plugin.PluginImplName;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
+/**
+ * The configuration for the {@link io.kroxylicious.filter.encryption.RecordEncryption} filter factory.
+ * @param kms The name of the KMS service implementation providing the key management.
+ * @param kmsConfig The KMS service implementation's configuration.
+ * @param selector The name of the KEK selector service implementation used to select the KEK for a topic.
+ * @param selectorConfig The KEK selector service implementation's configuration.
+ * @param experimental Experimental configuration properties, subject to change without notice.
+ * @param unresolvedKeyPolicy The policy applied when the KEK for a topic cannot be resolved.
+ */
 public record RecordEncryptionConfig(@JsonProperty(required = true) @PluginImplName(KmsService.class) String kms,
                                      @PluginImplConfig(implNameProperty = "kms") Object kmsConfig,
 
@@ -25,12 +34,20 @@ public record RecordEncryptionConfig(@JsonProperty(required = true) @PluginImplN
                                      @JsonProperty Map<String, Object> experimental,
                                      @JsonProperty UnresolvedKeyPolicy unresolvedKeyPolicy) {
 
+    /** The default initial size, in bytes, of the buffer used to hold an encrypted record. */
     public static final int RECORD_BUFFER_DEFAULT_INITIAL_BYTES = 1024 * 1024;
 
+    /**
+     * Creates a record encryption config, applying an empty map if {@code experimental} is null.
+     */
     public RecordEncryptionConfig {
         experimental = experimental == null ? Map.of() : experimental;
     }
 
+    /**
+     * Returns the configuration of the caches which sit in front of the KMS.
+     * @return the configuration of the caches which sit in front of the KMS.
+     */
     public KmsCacheConfig kmsCache() {
         Integer decryptedDekCacheSize = getExperimentalInt("decryptedDekCacheSize");
         Long decryptedDekExpireAfterAccessSeconds = getExperimentalLong("decryptedDekExpireAfterAccessSeconds");
@@ -44,12 +61,20 @@ public record RecordEncryptionConfig(@JsonProperty(required = true) @PluginImplN
                 resolvedAliasRefreshAfterWriteSeconds, notFoundAliasExpireAfterWriteSeconds, encryptionDekRefreshAfterWriteSeconds, encryptionDekExpireAfterWriteSeconds);
     }
 
+    /**
+     * Returns the configuration of the encryption buffer size limits.
+     * @return the configuration of the encryption buffer size limits.
+     */
     public EncryptionBufferConfig encryptionBuffer() {
         Integer minimumBufSize = getExperimentalIntOrElse("encryptionBufferMinimumSizeBytes", RECORD_BUFFER_DEFAULT_INITIAL_BYTES);
         Integer maximumBufSize = getExperimentalIntOrElse("encryptionBufferMaximumSizeBytes", 1024 * 1024 * 8);
         return new EncryptionBufferConfig(minimumBufSize, maximumBufSize);
     }
 
+    /**
+     * Returns the configuration of the DEK manager.
+     * @return the configuration of the DEK manager.
+     */
     public DekManagerConfig dekManager() {
         Long maxEncryptionsPerDek = getExperimentalLong("maxEncryptionsPerDek");
         return new DekManagerConfig(maxEncryptionsPerDek);
@@ -62,34 +87,27 @@ public record RecordEncryptionConfig(@JsonProperty(required = true) @PluginImplN
     }
 
     private Integer getExperimentalIntOrElse(String property, Integer defaultValue) {
-        return Optional.ofNullable(experimental.get(property)).map(value -> {
-            if (value instanceof Number number) {
-                return number.intValue();
-            }
-            else if (value instanceof String stringValue) {
-                return Integer.parseInt(stringValue);
-            }
-            else {
-                throw new IllegalArgumentException("could not convert " + property + " with type " + value.getClass().getSimpleName() + " to Integer");
-            }
+        return Optional.ofNullable(experimental.get(property)).map(value -> switch (value) {
+            case Number number -> number.intValue();
+            case String stringValue -> Integer.parseInt(stringValue);
+            default -> throw new IllegalArgumentException("could not convert " + property + " with type " + value.getClass().getSimpleName() + " to Integer");
         }).orElse(defaultValue);
     }
 
     @Nullable
     private Long getExperimentalLong(String property) {
-        return Optional.ofNullable(experimental.get(property)).map(value -> {
-            if (value instanceof Number number) {
-                return number.longValue();
-            }
-            else if (value instanceof String stringValue) {
-                return Long.parseLong(stringValue);
-            }
-            else {
-                throw new IllegalArgumentException("could not convert " + property + " with type " + value.getClass().getSimpleName() + " to Integer");
-            }
+        return Optional.ofNullable(experimental.get(property)).map(value -> switch (value) {
+            case Number number -> number.longValue();
+            case String stringValue -> Long.parseLong(stringValue);
+            default -> throw new IllegalArgumentException("could not convert " + property + " with type " + value.getClass().getSimpleName() + " to Long");
         }).orElse(null);
     }
 
+    /**
+     * Returns the policy applied when the KEK for a topic cannot be resolved, defaulting to
+     * {@link UnresolvedKeyPolicy#PASSTHROUGH_UNENCRYPTED}.
+     * @return the policy applied when the KEK for a topic cannot be resolved.
+     */
     @Override
     public UnresolvedKeyPolicy unresolvedKeyPolicy() {
         return unresolvedKeyPolicy == null ? UnresolvedKeyPolicy.PASSTHROUGH_UNENCRYPTED : unresolvedKeyPolicy;

@@ -7,6 +7,7 @@
 package io.kroxylicious.proxy.config;
 
 import java.net.URI;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -16,6 +17,10 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.kroxylicious.proxy.internal.net.AddressingSpec;
+import io.kroxylicious.proxy.internal.net.AdvertisingSpec;
+import io.kroxylicious.proxy.internal.net.BindingSpec;
+import io.kroxylicious.proxy.internal.net.ProxyNodeId;
 import io.kroxylicious.proxy.service.HostPort;
 import io.kroxylicious.proxy.service.NodeIdentificationStrategy;
 
@@ -62,23 +67,49 @@ public class SniHostIdentifiesNodeIdentificationStrategy
     @JsonIgnore
     private final Integer advertisedPort;
     @JsonIgnore
+    private final boolean hasExplicitAdvertisedPort;
+    @JsonIgnore
     private final Integer bootstrapPort;
 
+    /**
+     * The host part of the configured bootstrap address, with any port specifier removed.
+     *
+     * @return the bootstrap address pattern
+     */
     @JsonIgnore
     public String getBootstrapAddressPattern() {
         return parsedBootstrapAddressPattern;
     }
 
+    /**
+     * The port advertised to clients in broker addresses. It is the port given by
+     * {@code advertisedBrokerAddressPattern}, defaulting to the bootstrap port if the pattern
+     * does not specify one.
+     *
+     * @return the advertised port
+     */
     @JsonIgnore
     public int getAdvertisedPort() {
         return advertisedPort;
     }
 
+    /**
+     * The port part of the configured bootstrap address.
+     *
+     * @return the bootstrap port
+     */
     @JsonIgnore
     public int getBootstrapPort() {
         return bootstrapPort;
     }
 
+    /**
+     * Creates an SNI based node identification strategy.
+     *
+     * @param bootstrapAddress host and port of the bootstrap address; a port is required
+     * @param advertisedBrokerAddressPattern address pattern used to advertise broker addresses; must contain the
+     *        {@code $(nodeId)} replacement token and may specify an advertised port
+     */
     @JsonCreator
     public SniHostIdentifiesNodeIdentificationStrategy(@JsonProperty(required = true, value = "bootstrapAddress") String bootstrapAddress,
                                                        @JsonProperty(required = true, value = "advertisedBrokerAddressPattern") String advertisedBrokerAddressPattern) {
@@ -99,6 +130,7 @@ public class SniHostIdentifiesNodeIdentificationStrategy
         bootstrapPort = maybeBootstrapPort.get();
         BrokerAddressPatternUtils.PatternAndPort patternAndPort = BrokerAddressPatternUtils.parse(advertisedBrokerAddressPattern);
         String brokerAddressPatternPart = patternAndPort.addressPattern();
+        hasExplicitAdvertisedPort = patternAndPort.port().isPresent();
         advertisedPort = patternAndPort.port().orElse(bootstrapPort);
 
         validatePortSpecifier(brokerAddressPatternPart, s -> {
@@ -117,17 +149,29 @@ public class SniHostIdentifiesNodeIdentificationStrategy
         this.parsedBrokerAddressPattern = brokerAddressPatternPart;
     }
 
+    /**
+     * The configured bootstrap address, as given in the configuration.
+     *
+     * @return the bootstrap address
+     */
     @JsonProperty(required = true)
     public String getBootstrapAddress() {
         return bootstrapAddress;
     }
 
+    /**
+     * The configured advertised broker address pattern, as given in the configuration.
+     *
+     * @return the advertised broker address pattern
+     */
     @JsonProperty(required = true)
     public String getAdvertisedBrokerAddressPattern() {
         return advertisedBrokerAddressPattern;
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass") // Config value type for SNI-based node identification. Exact-type equality is intended: a subclass
+    // carrying extra configuration must not compare equal to a plain instance of this class.
     public boolean equals(Object obj) {
         if (obj == this) {
             return true;
@@ -152,7 +196,16 @@ public class SniHostIdentifiesNodeIdentificationStrategy
                 "advertisedBrokerAddressPattern=" + advertisedBrokerAddressPattern + ']';
     }
 
+    /**
+     * Thrown when the bootstrap address still contains the unresolved route host placeholder
+     * token (for example because the associated OpenShift Route is not yet ready).
+     */
     public static class UnresolvedHostException extends RuntimeException {
+        /**
+         * Creates the exception.
+         *
+         * @param m detail message
+         */
         public UnresolvedHostException(String m) {
             super(m);
         }
@@ -163,7 +216,7 @@ public class SniHostIdentifiesNodeIdentificationStrategy
         return new Strategy(clusterName);
     }
 
-    private class Strategy implements NodeIdentificationStrategy {
+    private class Strategy implements NodeIdentificationStrategy, BindingSpec, AdvertisingSpec, AddressingSpec {
 
         private final HostPort bootstrapAddress;
         private final String brokerAddressPattern;
@@ -237,24 +290,6 @@ public class SniHostIdentifiesNodeIdentificationStrategy
         }
 
         @Override
-        public @Nullable Integer getBrokerIdFromBrokerAddress(HostPort brokerAddress) {
-            if (brokerAddress.port() != bootstrapAddress.port()) {
-                return null;
-            }
-            var matcher = brokerAddressNodeIdCapturingRegex.matcher(brokerAddress.host());
-            if (matcher.matches()) {
-                var nodeId = matcher.group(1);
-                try {
-                    return Integer.valueOf(nodeId);
-                }
-                catch (NumberFormatException e) {
-                    throw new IllegalStateException("unexpected exception parsing : '%s'".formatted(nodeId), e);
-                }
-            }
-            return null;
-        }
-
-        @Override
         public Set<Integer> getSharedPorts() {
             return Set.of(bootstrapAddress.port());
         }
@@ -262,6 +297,67 @@ public class SniHostIdentifiesNodeIdentificationStrategy
         @Override
         public boolean requiresServerNameIndication() {
             return true;
+        }
+
+        // --- BindingSpec ---
+
+        @Override
+        public HostPort getBootstrapBindAddress() {
+            return bootstrapAddress;
+        }
+
+        @Override
+        public Map<Integer, HostPort> nodeBindAddresses() {
+            return Map.of();
+        }
+
+        @Override
+        public Set<Integer> getExclusivePorts() {
+            return Set.of();
+        }
+
+        @Override
+        public Optional<String> getBindAddress() {
+            return Optional.empty();
+        }
+
+        // --- AdvertisingSpec ---
+
+        @Override
+        public HostPort advertisedBootstrapAddress(ProxyNodeId.Bootstrap bootstrap) {
+            return new HostPort(bootstrapAddress.host(), bootstrap.gateway().resolvePort(bootstrap));
+        }
+
+        @Override
+        public HostPort advertisedBrokerAddress(ProxyNodeId virtualNodeId) throws IllegalArgumentException {
+            int nodeId = ((ProxyNodeId.Broker) virtualNodeId).nodeId();
+            String host = BrokerAddressPatternUtils.replaceLiteralNodeId(brokerAddressPattern, nodeId);
+            if (hasExplicitAdvertisedPort) {
+                return new HostPort(host, advertisedPort);
+            }
+            return new HostPort(host, virtualNodeId.gateway().resolvePort(virtualNodeId));
+        }
+
+        // --- AddressingSpec ---
+
+        @Override
+        public Target identify(int port, @Nullable String sniHostname) {
+            if (sniHostname == null) {
+                return new Target.Bootstrap();
+            }
+            var matcher = brokerAddressNodeIdCapturingRegex.matcher(sniHostname);
+            if (matcher.matches()) {
+                try {
+                    return new Target.Node(Integer.parseInt(matcher.group(1)));
+                }
+                catch (NumberFormatException e) {
+                    throw new IllegalStateException("unexpected exception parsing nodeId from SNI: '" + sniHostname + "'", e);
+                }
+            }
+            if (sniHostname.equalsIgnoreCase(bootstrapAddress.host())) {
+                return new Target.Bootstrap();
+            }
+            return new Target.NotRecognised();
         }
 
     }

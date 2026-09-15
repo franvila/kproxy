@@ -14,16 +14,16 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 
-import org.apache.kafka.common.record.MemoryRecords;
-import org.apache.kafka.common.utils.ByteBufferOutputStream;
+import io.kroxylicious.kafka.common.record.internal.MemoryRecords;
+import io.kroxylicious.kafka.common.utils.ByteBufferOutputStream;
 
 /**
- * <p>An API for manipulating batches of {@link org.apache.kafka.common.record.Record}s.
+ * <p>An API for manipulating batches of {@link io.kroxylicious.kafka.common.record.internal.Record}s.
  * This is loosely inspired by {@code java.util.stream.Stream},
- * but more sympathetic to Kafka's {@link org.apache.kafka.common.record.RecordBatch}
- * and {@link org.apache.kafka.common.record.Record} APIs.</p>
+ * but more sympathetic to Kafka's {@link io.kroxylicious.kafka.common.record.internal.RecordBatch}
+ * and {@link io.kroxylicious.kafka.common.record.internal.Record} APIs.</p>
  *
- * <p>Conceptually a {@code RecordStream} is an ordered sequence of {@link org.apache.kafka.common.record.RecordBatch}es
+ * <p>Conceptually a {@code RecordStream} is an ordered sequence of {@link io.kroxylicious.kafka.common.record.internal.RecordBatch}es
  * with the ability to associate some state with records.</p>
  *
  * <h2>Map-like operations</h2>
@@ -99,6 +99,13 @@ public class RecordStream<T> {
         return new RecordStream<>(records, (batch, record, idx) -> mapper.apply(batch, record, stateFunction.apply(batch, record, idx)));
     }
 
+    /**
+     * Invokes the given {@code mapper} for each record in this stream, together with its associated state.
+     * Control batches are skipped.
+     * This iterates the batches in the source {@link MemoryRecords} and so will result in
+     * batch decompression.
+     * @param mapper The consumer to invoke for each record
+     */
     public void forEachRecord(RecordConsumer<T> mapper) {
         int i = 0;
         for (var batch : records.batches()) {
@@ -123,6 +130,15 @@ public class RecordStream<T> {
         return toCollection(mapper, new HashSet<>());
     }
 
+    /**
+     * Map each of the records in this stream to some new state and return the list of those mapped states,
+     * in stream order.
+     * This iterates the batches in the source {@link MemoryRecords} and so will result in
+     * batch decompression.
+     * @param mapper The mapper function
+     * @return The list
+     * @param <S> The type of state
+     */
     public <S> List<S> toList(RecordMapper<T, S> mapper) {
         return toCollection(mapper, new ArrayList<>());
     }
@@ -147,6 +163,7 @@ public class RecordStream<T> {
      * This iterates the batches in the source {@link MemoryRecords} and so will result in
      * batch decompression.
      *
+     * @param buffer The buffer into which the mapped records are written
      * @param transform The record transform
      * @return The mapped records
      */

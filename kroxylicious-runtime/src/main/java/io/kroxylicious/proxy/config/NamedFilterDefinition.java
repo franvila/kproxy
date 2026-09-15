@@ -21,8 +21,8 @@ import edu.umd.cs.findbugs.annotations.Nullable;
 /**
  * A named filter definition
  * @param name The name of the filter instance.
- * @param type
- * @param config
+ * @param type The name of the {@link FilterFactory} plugin implementation providing the filter.
+ * @param config The filter's configuration, or {@code null} if the filter requires none.
  * @see Configuration#filterDefinitions()
  */
 public record NamedFilterDefinition(
@@ -32,6 +32,10 @@ public record NamedFilterDefinition(
 
     private static final Pattern NAME_PATTERN = Pattern.compile("[a-z0-9A-Z](?:[a-z0-9A-Z_.-]{0,251}[a-z0-9A-Z])?");
 
+    /**
+     * Validates the filter definition: {@code name} must match the allowed name pattern
+     * and {@code type} is required.
+     */
     @JsonCreator
     public NamedFilterDefinition {
         Objects.requireNonNull(name);
@@ -44,7 +48,10 @@ public record NamedFilterDefinition(
     /**
      * Returns {@code true} if this definition is semantically identical to {@code other}.
      * Used by the configuration change-detection pipeline (see {@code FilterChangeDetector})
-     * to decide whether clusters referencing this filter need to be restarted during hot-reload
+     * to decide whether clusters referencing this filter need to be restarted during hot-reload.
+     *
+     * @param other the filter definition to compare against, may be {@code null}
+     * @return true if the two definitions are semantically identical
      */
     public boolean sameAs(@Nullable NamedFilterDefinition other) {
         return Objects.equals(this, other);

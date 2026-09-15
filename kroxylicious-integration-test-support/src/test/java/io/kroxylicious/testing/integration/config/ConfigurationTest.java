@@ -26,6 +26,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.flipkart.zjsonpatch.JsonDiff;
 
 import io.kroxylicious.proxy.bootstrap.RoundRobinBootstrapSelectionStrategy;
+import io.kroxylicious.proxy.config.ClusterDefinition;
 import io.kroxylicious.proxy.config.ConfigParser;
 import io.kroxylicious.proxy.config.Configuration;
 import io.kroxylicious.proxy.config.ConfigurationBuilder;
@@ -34,6 +35,9 @@ import io.kroxylicious.proxy.config.NamedFilterDefinition;
 import io.kroxylicious.proxy.config.PortIdentifiesNodeIdentificationStrategy;
 import io.kroxylicious.proxy.config.ProxyProtocolConfig;
 import io.kroxylicious.proxy.config.ProxyProtocolMode;
+import io.kroxylicious.proxy.config.RouteDefinition;
+import io.kroxylicious.proxy.config.RouteTarget;
+import io.kroxylicious.proxy.config.RouterDefinition;
 import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.config.VirtualCluster;
 import io.kroxylicious.proxy.config.VirtualClusterBuilder;
@@ -591,7 +595,9 @@ class ConfigurationTest {
         Optional<Map<String, Object>> development = Optional.empty();
         var virtualCluster = List.of(VIRTUAL_CLUSTER);
         assertThatThrownBy(() -> new Configuration(null,
+                null,
                 filterDefinitions,
+                null,
                 null,
                 virtualCluster,
                 null,
@@ -609,8 +615,11 @@ class ConfigurationTest {
         List<NamedFilterDefinition> filterDefinitions = List.of();
         List<String> defaultFilters = List.of("missing");
         var virtualCluster = List.of(VIRTUAL_CLUSTER);
-        assertThatThrownBy(() -> new Configuration(null, filterDefinitions,
+        assertThatThrownBy(() -> new Configuration(null,
+                null,
+                filterDefinitions,
                 defaultFilters,
+                null,
                 virtualCluster,
                 null,
                 false,
@@ -631,10 +640,13 @@ class ConfigurationTest {
                 .of(new VirtualCluster("vc1", targetCluster, defaultGateway, false, false, List.of("missing")));
         assertThatThrownBy(() -> new Configuration(
                 null,
+                null,
                 filterDefinitions,
                 null,
+                null,
                 virtualClusters,
-                null, false,
+                null,
+                false,
                 development,
                 null,
                 null))
@@ -657,8 +669,10 @@ class ConfigurationTest {
         TargetCluster targetCluster = new TargetCluster("unused:9082", Optional.empty());
         List<VirtualCluster> virtualClusters = List.of(new VirtualCluster("vc1", targetCluster, defaultGateway, false, false, List.of("used2")));
         assertThatThrownBy(() -> new Configuration(null,
+                null,
                 filterDefinitions,
                 defaultFilters,
+                null,
                 virtualClusters,
                 null,
                 false,
@@ -666,7 +680,8 @@ class ConfigurationTest {
                 null,
                 null))
                 .isInstanceOf(IllegalConfigurationException.class)
-                .hasMessage("'filterDefinitions' defines filters which are not used in 'defaultFilters' or in any virtual cluster's 'filters': [unused]");
+                .hasMessage(
+                        "'filterDefinitions' defines filters which are not used in 'defaultFilters', in any virtual cluster's 'filters', or in any route's 'filters': [unused]");
     }
 
     @Test
@@ -681,8 +696,10 @@ class ConfigurationTest {
 
         Configuration configuration = new Configuration(
                 null,
+                null,
                 filterDefinitions,
                 List.of("bar"),
+                null,
                 List.of(direct, defaulted),
                 null,
                 false,
@@ -704,7 +721,7 @@ class ConfigurationTest {
 
     @Test
     void proxyProtocolModeShouldReturnRequiredWhenRequired() {
-        Configuration configuration = new Configuration(null, null, null,
+        Configuration configuration = new Configuration(null, null, null, null, null,
                 List.of(buildVirtualCluster("vc", "x:9092", null)),
                 null, false, Optional.empty(), null,
                 new ProxyProtocolConfig(ProxyProtocolMode.REQUIRED));
@@ -713,7 +730,7 @@ class ConfigurationTest {
 
     @Test
     void proxyProtocolModeShouldReturnAllowedWhenAllowed() {
-        Configuration configuration = new Configuration(null, null, null,
+        Configuration configuration = new Configuration(null, null, null, null, null,
                 List.of(buildVirtualCluster("vc", "x:9092", null)),
                 null, false, Optional.empty(), null,
                 new ProxyProtocolConfig(ProxyProtocolMode.ALLOWED));
@@ -722,7 +739,7 @@ class ConfigurationTest {
 
     @Test
     void proxyProtocolModeShouldReturnDisabledWhenDisabled() {
-        Configuration configuration = new Configuration(null, null, null,
+        Configuration configuration = new Configuration(null, null, null, null, null,
                 List.of(buildVirtualCluster("vc", "x:9092", null)),
                 null, false, Optional.empty(), null,
                 new ProxyProtocolConfig(ProxyProtocolMode.DISABLED));
@@ -731,11 +748,72 @@ class ConfigurationTest {
 
     @Test
     void proxyProtocolDefaultsToDisabledWhenNull() {
-        Configuration configuration = new Configuration(null, null, null,
+        Configuration configuration = new Configuration(null, null, null, null, null,
                 List.of(buildVirtualCluster("vc", "x:9092", null)),
                 null, false, Optional.empty(), null,
                 null);
         assertThat(configuration.proxyProtocolMode()).isEqualTo(ProxyProtocolMode.DISABLED);
+    }
+
+    @Test
+    void shouldAcceptNestedRouters() {
+        // Given
+        var cluster = new ClusterDefinition("some-cluster", "broker:9092", null);
+        var innerRoute = new RouteDefinition("inner-route", 0, List.of(), new RouteTarget("some-cluster", null));
+        var innerRouter = new RouterDefinition("inner-router", "SomeFactory", null, List.of(innerRoute));
+        var outerRoute = new RouteDefinition("outer-route", 0, List.of(), new RouteTarget(null, "inner-router"));
+        var outerRouter = new RouterDefinition("outer-router", "SomeFactory", null, List.of(outerRoute));
+        var gateway = new VirtualClusterGateway("gw",
+                new PortIdentifiesNodeIdentificationStrategy(new HostPort("localhost", 9192), null, null, null),
+                null, Optional.empty());
+        var vc = new VirtualCluster("vc1", null, new RouteTarget(null, "outer-router"),
+                List.of(gateway), false, false, null, null, null, null);
+
+        // When
+        assertThatCode(() -> new Configuration(
+                null,
+                List.of(cluster),
+                null,
+                null,
+                List.of(outerRouter, innerRouter),
+                List.of(vc),
+                null,
+                false,
+                Optional.empty(),
+                null,
+                null))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void shouldRejectCyclicNestedRouters() {
+        // Given
+        var cluster = new ClusterDefinition("some-cluster", "broker:9092", null);
+        var routeToB = new RouteDefinition("to-b", 0, List.of(), new RouteTarget(null, "router-b"));
+        var routerA = new RouterDefinition("router-a", "SomeFactory", null, List.of(routeToB));
+        var routeToA = new RouteDefinition("to-a", 0, List.of(), new RouteTarget(null, "router-a"));
+        var routerB = new RouterDefinition("router-b", "SomeFactory", null, List.of(routeToA));
+        var gateway = new VirtualClusterGateway("gw",
+                new PortIdentifiesNodeIdentificationStrategy(new HostPort("localhost", 9192), null, null, null),
+                null, Optional.empty());
+        var vc = new VirtualCluster("vc1", null, new RouteTarget(null, "router-a"),
+                List.of(gateway), false, false, null, null, null, null);
+
+        // When / Then
+        assertThatThrownBy(() -> new Configuration(
+                null,
+                List.of(cluster),
+                null,
+                null,
+                List.of(routerA, routerB),
+                List.of(vc),
+                null,
+                false,
+                Optional.empty(),
+                null,
+                null))
+                .isInstanceOf(IllegalConfigurationException.class)
+                .hasMessageContaining("cycle");
     }
 
     @NonNull

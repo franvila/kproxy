@@ -124,7 +124,25 @@ public final class HostPort {
         }
     }
 
+    /**
+     * Renders the given host and port in the {@code host:port} form produced by {@link #toString()}.
+     *
+     * @param host the host
+     * @param port the port number
+     * @return the {@code host:port} string
+     */
     public static String asString(String host, int port) {
         return new HostPort(host, port).toString();
+    }
+
+    /**
+     * Returns true if the port is the OS-assigned sentinel value (0), meaning the OS will
+     * assign an ephemeral port at bind time rather than using a fixed port number.
+     *
+     * @param port port number to test
+     * @return true if the port is OS-assigned
+     */
+    public static boolean isOsAssigned(int port) {
+        return port == 0;
     }
 }

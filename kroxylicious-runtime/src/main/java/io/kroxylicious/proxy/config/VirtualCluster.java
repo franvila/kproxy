@@ -20,26 +20,21 @@ import edu.umd.cs.findbugs.annotations.Nullable;
  * A virtual cluster.
  *
  * @param name virtual cluster name
- * @param targetCluster the cluster being proxied
+ * @param targetCluster inline target cluster definition (mutually exclusive with {@code target})
+ * @param target reference to a named cluster or router (mutually exclusive with {@code targetCluster})
  * @param gateways virtual cluster gateways
  * @param logNetwork if true, network will be logged
  * @param logFrames if true, kafka rpcs will be logged
- * @param filters filers.
+ * @param filters filters applied to requests
  * @param subjectBuilder subject builder configuration (optional)
  * @param topicNameCache topic-name cache configuration (optional)
  * @param drainTimeout maximum time to wait for in-flight requests to complete during
- *                     graceful connection draining for this cluster. Must be strictly
- *                     less than the Netty shutdown timeout (configured via
- *                     {@code network.proxy.shutdownTimeout}, default 15 s) — otherwise
- *                     Netty's force-close runs first and the per-connection drain timer
- *                     never fires. {@code null} means "use the proxy's default" — the
- *                     resolved value is supplied at the use site by
- *                     {@link #effectiveDrainTimeout()}. The default is currently 10 s
- *                     and may evolve in future proxy versions.
+ *                     graceful connection draining for this cluster
  */
 @SuppressWarnings("java:S1123") // suppressing the spurious warning about missing @deprecated in javadoc. It is the field that is deprecated, not the class.
 public record VirtualCluster(@JsonProperty(required = true) String name,
-                             @JsonProperty(required = true) TargetCluster targetCluster,
+                             @Deprecated(since = "0.22.0", forRemoval = true) @Nullable TargetCluster targetCluster,
+                             @Nullable RouteTarget target,
                              @JsonProperty(required = true) List<VirtualClusterGateway> gateways,
                              boolean logNetwork,
                              boolean logFrames,
@@ -51,15 +46,20 @@ public record VirtualCluster(@JsonProperty(required = true) String name,
     private static final Pattern DNS_LABEL_PATTERN = Pattern.compile("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", Pattern.CASE_INSENSITIVE);
     private static final Duration DEFAULT_DRAIN_TIMEOUT = Duration.ofSeconds(10);
 
+    /**
+     * Validates the virtual cluster: the name must be a DNS label, exactly one of
+     * {@code targetCluster} or {@code target} must be given, at least one uniquely-named
+     * gateway must be configured, and any explicit {@code drainTimeout} must be positive.
+     */
     @SuppressWarnings("java:S2789") // S2789 - checking for null tls is the intent
     public VirtualCluster {
         Objects.requireNonNull(name);
-        Objects.requireNonNull(targetCluster);
         if (!isDnsLabel(name)) {
             throw new IllegalConfigurationException(
                     "Virtual cluster name '" + name + "' is invalid. It must be less than 64 characters long and match pattern " + DNS_LABEL_PATTERN.pattern()
                             + " (case insensitive)");
         }
+        validateTargetExclusivity(name, targetCluster, target);
         if (gateways == null || gateways.isEmpty()) {
             throw new IllegalConfigurationException("no gateways configured for virtual cluster '" + name + "'");
         }
@@ -77,13 +77,57 @@ public record VirtualCluster(@JsonProperty(required = true) String name,
         }
     }
 
-    public VirtualCluster(@JsonProperty(required = true) String name,
-                          @JsonProperty(required = true) TargetCluster targetCluster,
-                          @JsonProperty(required = true) List<VirtualClusterGateway> gateways,
+    /**
+     * Convenience constructor for a virtual cluster with an inline target cluster and all
+     * optional components defaulted.
+     *
+     * @param name virtual cluster name
+     * @param targetCluster inline target cluster definition
+     * @param gateways virtual cluster gateways
+     * @param logNetwork if true, network will be logged
+     * @param logFrames if true, kafka rpcs will be logged
+     * @param filters filters applied to requests
+     */
+    public VirtualCluster(String name,
+                          TargetCluster targetCluster,
+                          List<VirtualClusterGateway> gateways,
                           boolean logNetwork,
                           boolean logFrames,
                           @Nullable List<String> filters) {
-        this(name, targetCluster, gateways, logNetwork, logFrames, filters, null, null, null);
+        this(name, targetCluster, null, gateways, logNetwork, logFrames, filters, null, null, null);
+    }
+
+    /**
+     * The name of the router this cluster targets, if any.
+     *
+     * @return the router name from {@code target}, or {@code null} if this cluster does not target a router
+     */
+    @Nullable
+    public String router() {
+        return target != null ? target.router() : null;
+    }
+
+    /**
+     * The name of the cluster definition this cluster targets, if any.
+     *
+     * @return the cluster name from {@code target}, or {@code null} if this cluster does not target a named cluster
+     */
+    @Nullable
+    public String namedTargetCluster() {
+        return target != null ? target.cluster() : null;
+    }
+
+    private static void validateTargetExclusivity(String name,
+                                                  @Nullable TargetCluster targetCluster,
+                                                  @Nullable RouteTarget target) {
+        if (targetCluster != null && target != null) {
+            throw new IllegalConfigurationException(
+                    "Virtual cluster '" + name + "' must specify exactly one of 'targetCluster' or 'target'");
+        }
+        if (targetCluster == null && target == null) {
+            throw new IllegalConfigurationException(
+                    "Virtual cluster '" + name + "' must specify exactly one of 'targetCluster' or 'target'");
+        }
     }
 
     boolean isDnsLabel(String name) {
@@ -118,7 +162,7 @@ public record VirtualCluster(@JsonProperty(required = true) String name,
      * default when the field is {@code null}. Used at the construction site of
      * {@link io.kroxylicious.proxy.model.VirtualClusterModel} so that the raw record
      * component remains nullable (preserving Jackson round-trip fidelity), while the
-     * runtime always sees a resolved {@link Duration}.
+     * runtime always sees a resolved {@link java.time.Duration}.
      */
     Duration effectiveDrainTimeout() {
         return drainTimeout == null ? DEFAULT_DRAIN_TIMEOUT : drainTimeout;
@@ -135,7 +179,12 @@ public record VirtualCluster(@JsonProperty(required = true) String name,
      * so reordering YAML entries is a no-op and must not produce a false positive. All
      * other components (including any added in the future) are compared by the record's
      * auto-equals, so this method extends automatically.
+     *
+     * @param other the virtual cluster to compare against, may be {@code null}
+     * @return true if the two configurations are semantically identical
      */
+    // identity check: reflexivity fast-path, same idiom as equals()
+    @SuppressWarnings("ReferenceEquality")
     public boolean sameAs(@Nullable VirtualCluster other) {
         if (this == other) {
             return true;
@@ -158,6 +207,7 @@ public record VirtualCluster(@JsonProperty(required = true) String name,
         return new VirtualCluster(
                 name,
                 targetCluster,
+                target,
                 sortedGateways,
                 logNetwork,
                 logFrames,

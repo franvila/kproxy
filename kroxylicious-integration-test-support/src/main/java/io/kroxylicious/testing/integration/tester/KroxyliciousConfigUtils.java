@@ -15,8 +15,6 @@ import io.kroxylicious.proxy.config.VirtualClusterGatewayBuilder;
 import io.kroxylicious.proxy.service.HostPort;
 import io.kroxylicious.testing.kafka.api.KafkaCluster;
 
-import edu.umd.cs.findbugs.annotations.NonNull;
-
 /**
  * Class for utilities related to manipulating KroxyliciousConfig and it's builder.
  */
@@ -25,10 +23,20 @@ public class KroxyliciousConfigUtils {
     private KroxyliciousConfigUtils() {
     }
 
+    /**
+     * The name of the virtual cluster used when no name is supplied.
+     */
     public static final String DEFAULT_VIRTUAL_CLUSTER = "demo";
+
+    /**
+     * The name of the gateway used when no name is supplied.
+     */
     public static final String DEFAULT_GATEWAY_NAME = "default";
 
-    public static final HostPort DEFAULT_PROXY_BOOTSTRAP = new HostPort("localhost", 9192);
+    /**
+     * A bootstrap address on localhost with an OS-assigned (ephemeral) port.
+     */
+    public static final HostPort OS_ASSIGNED_BOOTSTRAP = new HostPort("localhost", 0);
 
     /**
      * Create a KroxyliciousConfigBuilder with a single virtual cluster configured to
@@ -50,15 +58,13 @@ public class KroxyliciousConfigUtils {
      */
     public static ConfigurationBuilder proxy(String clusterBootstrapServers, String... virtualClusterNames) {
         final ConfigurationBuilder configurationBuilder = baseConfigurationBuilder();
-        for (int i = 0; i < virtualClusterNames.length; i++) {
-            String virtualClusterName = virtualClusterNames[i];
+        for (String virtualClusterName : virtualClusterNames) {
             var vcb = new VirtualClusterBuilder()
                     .withName(virtualClusterName)
                     .withNewTargetCluster()
                     .withBootstrapServers(clusterBootstrapServers)
                     .endTargetCluster()
-                    .addToGateways(defaultPortIdentifiesNodeGatewayBuilder(new HostPort(DEFAULT_PROXY_BOOTSTRAP.host(), DEFAULT_PROXY_BOOTSTRAP.port() + i * 10))
-                            .build());
+                    .addToGateways(defaultPortIdentifiesNodeGatewayBuilder(OS_ASSIGNED_BOOTSTRAP).build());
             configurationBuilder
                     .addToVirtualClusters(vcb.build());
         }
@@ -98,10 +104,20 @@ public class KroxyliciousConfigUtils {
         return nodeIdentificationStrategy.getClusterBootstrapAddress().toString();
     }
 
+    /**
+     * Create a gateway builder with the default gateway name.
+     * @return gateway builder
+     */
     public static VirtualClusterGatewayBuilder defaultGatewayBuilder() {
         return new VirtualClusterGatewayBuilder().withName(DEFAULT_GATEWAY_NAME);
     }
 
+    /**
+     * Create a gateway builder with the default gateway name, using the port-identifies-node
+     * scheme with the given bootstrap address.
+     * @param proxyAddress the proxy's bootstrap address
+     * @return gateway builder
+     */
     public static VirtualClusterGatewayBuilder defaultPortIdentifiesNodeGatewayBuilder(HostPort proxyAddress) {
         return defaultGatewayBuilder()
                 .withNewPortIdentifiesNode()
@@ -109,10 +125,23 @@ public class KroxyliciousConfigUtils {
                 .endPortIdentifiesNode();
     }
 
+    /**
+     * Create a gateway builder with the default gateway name, using the port-identifies-node
+     * scheme with the given bootstrap address.
+     * @param proxyAddress the proxy's bootstrap address ({@code host:port})
+     * @return gateway builder
+     */
     public static VirtualClusterGatewayBuilder defaultPortIdentifiesNodeGatewayBuilder(String proxyAddress) {
         return defaultPortIdentifiesNodeGatewayBuilder(HostPort.parse(proxyAddress));
     }
 
+    /**
+     * Create a gateway builder with the default gateway name, using the SNI-host-identifies-node
+     * scheme with the given bootstrap address and broker address pattern.
+     * @param bootstrapAddress the proxy's bootstrap address
+     * @param advertisedBrokerAddressPattern the advertised broker address pattern
+     * @return gateway builder
+     */
     public static VirtualClusterGatewayBuilder defaultSniHostIdentifiesNodeGatewayBuilder(HostPort bootstrapAddress, String advertisedBrokerAddressPattern) {
         return defaultGatewayBuilder()
                 .withNewSniHostIdentifiesNode()
@@ -121,11 +150,23 @@ public class KroxyliciousConfigUtils {
                 .endSniHostIdentifiesNode();
     }
 
+    /**
+     * Create a gateway builder with the default gateway name, using the SNI-host-identifies-node
+     * scheme with the given bootstrap address and broker address pattern.
+     * @param bootstrapAddress the proxy's bootstrap address ({@code host:port})
+     * @param advertisedBrokerAddressPattern the advertised broker address pattern
+     * @return gateway builder
+     */
     public static VirtualClusterGatewayBuilder defaultSniHostIdentifiesNodeGatewayBuilder(String bootstrapAddress, String advertisedBrokerAddressPattern) {
         return defaultSniHostIdentifiesNodeGatewayBuilder(HostPort.parse(bootstrapAddress), advertisedBrokerAddressPattern);
     }
 
-    @NonNull
+    /**
+     * Create a virtual cluster builder with the given name, targeting the given Kafka cluster.
+     * @param cluster kafka cluster to proxy
+     * @param clusterName name of the virtual cluster
+     * @return virtual cluster builder
+     */
     public static VirtualClusterBuilder baseVirtualClusterBuilder(KafkaCluster cluster, String clusterName) {
         return new VirtualClusterBuilder()
                 .withNewTargetCluster()
@@ -134,6 +175,11 @@ public class KroxyliciousConfigUtils {
                 .withName(clusterName);
     }
 
+    /**
+     * Create a configuration builder pre-configured with zero shutdown quiet periods, so
+     * that proxies started by tests stop promptly.
+     * @return configuration builder
+     */
     public static ConfigurationBuilder baseConfigurationBuilder() {
         ConfigurationBuilder configurationBuilder = new ConfigurationBuilder();
         configurationBuilder.withNewNetwork()

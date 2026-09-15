@@ -18,8 +18,18 @@ import io.kroxylicious.kms.service.KmsException;
 @FunctionalInterface
 public interface CredentialsProviderFactory {
 
+    /**
+     * Creates the credentials provider defined by the given configuration.
+     *
+     * @param config KMS service configuration.
+     * @return credentials provider.
+     */
     CredentialsProvider createCredentialsProvider(Config config);
 
+    /**
+     * Default factory that creates the provider corresponding to the single credential
+     * provider defined by the {@code credentials} node of the configuration.
+     */
     CredentialsProviderFactory DEFAULT = config -> {
         var creds = config.credentials();
         if (creds == null) {
@@ -42,7 +52,7 @@ public interface CredentialsProviderFactory {
             throw new KmsException(
                     "Config must define exactly one credential provider, found %s".formatted(List.copyOf(configured)));
         }
-        return switch (configured.get(0)) {
+        return switch (configured.getFirst()) {
             case "longTerm" -> new LongTermCredentialsProvider(creds.longTerm());
             case "ec2Metadata" -> new Ec2MetadataCredentialsProvider(creds.ec2Metadata());
             case "webIdentity" -> new WebIdentityCredentialsProvider(creds.webIdentity(), config.region());

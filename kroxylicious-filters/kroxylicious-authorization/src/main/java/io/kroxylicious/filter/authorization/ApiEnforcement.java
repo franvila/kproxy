@@ -11,11 +11,10 @@ import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiMessage;
-
 import io.kroxylicious.authorizer.service.ResourceType;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.RequestFilterResult;
 import io.kroxylicious.proxy.filter.ResponseFilterResult;
@@ -46,12 +45,12 @@ import io.kroxylicious.proxy.filter.ResponseFilterResult;
 abstract class ApiEnforcement<Q extends ApiMessage, S extends ApiMessage> {
 
     /**
-     * @return The inclusive minimum version of the range of versions supported
+     * Returns the inclusive minimum version of the supported version range.
      */
     abstract short minSupportedVersion();
 
     /**
-     * @return The inclusive maximum version of the range of versions supported
+     * Returns the inclusive maximum version of the supported version range.
      */
     abstract short maxSupportedVersion();
 

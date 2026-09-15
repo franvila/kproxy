@@ -20,7 +20,7 @@ import static java.util.Arrays.stream;
 /**
  * Represents the entire set of proxy features.
  */
-public class Features {
+public final class Features {
 
     private static final Features DEFAULT_FEATURES = new Features(Map.of());
     private final Map<Feature, Boolean> featureToEnabled;
@@ -41,6 +41,7 @@ public class Features {
     }
 
     /**
+     * Tests whether the given feature is enabled.
      *
      * @param feature feature to test
      * @return true if feature enabled, else false
@@ -49,6 +50,11 @@ public class Features {
         return featureToEnabled.getOrDefault(feature, feature.enabledByDefault());
     }
 
+    /**
+     * Returns the default feature set, with every feature at its default enablement.
+     *
+     * @return the default features
+     */
     public static Features defaultFeatures() {
         return DEFAULT_FEATURES;
     }
@@ -61,18 +67,44 @@ public class Features {
         return stream(Feature.values()).flatMap(feature -> feature.maybeWarning(isEnabled(feature)).stream()).toList();
     }
 
+    /**
+     * Creates a new builder with no features explicitly enabled.
+     *
+     * @return a new builder
+     */
     public static FeaturesBuilder builder() {
         return new FeaturesBuilder();
     }
 
+    /**
+     * Builder of {@link Features} instances.
+     */
     public static class FeaturesBuilder {
         private final Map<Feature, Boolean> features = new EnumMap<>(Feature.class);
 
+        /**
+         * Creates a builder with no features explicitly enabled.
+         */
+        public FeaturesBuilder() {
+            // Intentionally empty
+        }
+
+        /**
+         * Enables the given feature.
+         *
+         * @param feature feature to enable
+         * @return this builder
+         */
         public FeaturesBuilder enable(Feature feature) {
             features.put(feature, true);
             return this;
         }
 
+        /**
+         * Builds the features.
+         *
+         * @return the built {@link Features} instance
+         */
         public Features build() {
             if (features.isEmpty()) {
                 return Features.defaultFeatures();
@@ -87,11 +119,10 @@ public class Features {
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
+        if (!(o instanceof Features other)) {
             return false;
         }
-        Features features1 = (Features) o;
-        return Objects.equals(featureToEnabled, features1.featureToEnabled);
+        return Objects.equals(featureToEnabled, other.featureToEnabled);
     }
 
     @Override

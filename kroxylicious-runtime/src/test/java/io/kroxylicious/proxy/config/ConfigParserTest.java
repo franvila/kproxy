@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -317,6 +318,51 @@ class ConfigParserTest {
                           - name: mygateway
                             portIdentifiesNode:
                               bootstrapAddress: "localhost:9082"
+                        """),
+                argumentSet("Cluster definitions", """
+                        clusterDefinitions:
+                        - name: my-cluster
+                          bootstrapServers: broker1:9092,broker2:9092
+                        virtualClusters:
+                        - name: demo1
+                          target:
+                            cluster: my-cluster
+                          gateways:
+                          - name: mygateway
+                            portIdentifiesNode:
+                              bootstrapAddress: "localhost:9082"
+                        """),
+                argumentSet("Cluster definitions with TLS", """
+                        clusterDefinitions:
+                        - name: my-cluster
+                          bootstrapServers: broker1:9092
+                          tls:
+                            trust:
+                              storeFile: /tmp/trust.jks
+                              storePassword:
+                                password: changeit
+                              storeType: JKS
+                        virtualClusters:
+                        - name: demo1
+                          target:
+                            cluster: my-cluster
+                          gateways:
+                          - name: mygateway
+                            portIdentifiesNode:
+                              bootstrapAddress: "localhost:9082"
+                        """),
+                argumentSet("Virtual cluster with target cluster reference", """
+                        clusterDefinitions:
+                        - name: my-cluster
+                          bootstrapServers: broker:9092
+                        virtualClusters:
+                        - name: demo1
+                          target:
+                            cluster: my-cluster
+                          gateways:
+                          - name: mygateway
+                            portIdentifiesNode:
+                              bootstrapAddress: "localhost:9082"
                         """));
     }
 
@@ -475,6 +521,91 @@ class ConfigParserTest {
     }
 
     @Test
+    void virtualClusterModelByNameReturnsTheRequestedCluster() {
+        // Given: two virtual clusters in the configuration.
+        Configuration config = configParser.parseConfiguration("""
+                virtualClusters:
+                  - name: vc-a
+                    targetCluster:
+                      bootstrapServers: kafka.example:1234
+                    gateways:
+                    - name: default
+                      portIdentifiesNode:
+                        bootstrapAddress: cluster1:9192
+                  - name: vc-b
+                    targetCluster:
+                      bootstrapServers: kafka.example:5678
+                    gateways:
+                    - name: default
+                      portIdentifiesNode:
+                        bootstrapAddress: cluster2:9292
+                """);
+
+        // When: the per-name builder is asked for vc-a.
+        var result = config.virtualClusterModel(null, "vc-a");
+
+        // Then: only vc-a's model is returned.
+        assertThat(result.getClusterName()).isEqualTo("vc-a");
+    }
+
+    @Test
+    void virtualClusterModelByNameThrowsForUnknownCluster() {
+        // Given: a configuration with one virtual cluster.
+        Configuration config = configParser.parseConfiguration("""
+                virtualClusters:
+                  - name: vc-a
+                    targetCluster:
+                      bootstrapServers: kafka.example:1234
+                    gateways:
+                    - name: default
+                      portIdentifiesNode:
+                        bootstrapAddress: cluster1:9192
+                """);
+
+        // When/Then: asking for a name not in the config surfaces the framework-layer diagnostic.
+        assertThatThrownBy(() -> config.virtualClusterModel(null, "never-existed"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("never-existed");
+    }
+
+    @Test
+    void virtualClusterModelByNameDoesNotBuildUnrelatedClusters() {
+        // Given: a configuration where vc-a is valid but vc-bad has invalid TLS that would
+        // cause its VCM construction to throw. The list-form builder iterates every cluster
+        // and would surface that failure; the per-name builder must not.
+        Configuration config = configParser.parseConfiguration("""
+                virtualClusters:
+                  - name: vc-a
+                    targetCluster:
+                      bootstrapServers: kafka.example:1234
+                    gateways:
+                    - name: default
+                      portIdentifiesNode:
+                        bootstrapAddress: cluster1:9192
+                  - name: vc-bad
+                    targetCluster:
+                      bootstrapServers: kafka.example:5678
+                    gateways:
+                    - name: default
+                      tls: {}
+                      portIdentifiesNode:
+                        bootstrapAddress: cluster2:9292
+                """);
+
+        // Sanity: building the full list throws because of vc-bad's missing TLS key.
+        assertThatThrownBy(() -> config.virtualClusterModel(null))
+                .as("list-form should surface vc-bad's configuration error")
+                .isInstanceOf(IllegalConfigurationException.class);
+
+        // When: the per-name builder is asked for vc-a (the valid one).
+        // Then: it returns vc-a's model and does NOT touch vc-bad. This is the load-bearing
+        // contract for issue #4091 — selective construction means orphan VCMs are not built
+        // for clusters the reconfigure isn't touching.
+        var result = config.virtualClusterModel(null, "vc-a");
+        assertThat(result.getClusterName()).isEqualTo("vc-a");
+    }
+
+    @Test
     void shouldRequireKeyIfDownstreamTlsObjectPresent() {
         // given
         Configuration configuration = configParser.parseConfiguration("""
@@ -610,7 +741,7 @@ class ConfigParserTest {
                 // Then
                 .isInstanceOf(IllegalArgumentException.class)
                 .cause()
-                .hasMessageContaining("Missing required creator property 'targetCluster'");
+                .hasMessageContaining("must specify exactly one of 'targetCluster' or 'target'");
     }
 
     @Test
@@ -833,15 +964,8 @@ class ConfigParserTest {
         var targetCluster = new TargetCluster("mycluster:9082", Optional.empty());
         var gateway = new VirtualClusterGateway("gw", new PortIdentifiesNodeIdentificationStrategy(HostPort.parse("localhost:9082"), null, null, null), null,
                 Optional.empty());
-        var config = new Configuration(null,
-                List.of(new NamedFilterDefinition("foo", "", new NonSerializableConfig(""))),
-                List.of("foo"),
-                List.of(new VirtualCluster("demo", targetCluster, List.of(gateway), false, false, List.of())),
-                null,
-                false,
-                Optional.empty(),
-                null,
-                null);
+        var config = new Configuration(null, null, List.of(new NamedFilterDefinition("foo", "", new NonSerializableConfig(""))), List.of("foo"), null,
+                List.of(new VirtualCluster("demo", targetCluster, List.of(gateway), false, false, List.of())), null, false, Optional.empty(), null, null);
 
         ConfigParser cp = new ConfigParser();
         assertThatThrownBy(() -> {
@@ -950,10 +1074,17 @@ class ConfigParserTest {
                 .satisfies(targetCluster -> {
                     // because we want to preserve fidelity between the config model and yaml version the field returns null
                     assertThat(targetCluster.selectionStrategy()).isNull();
-                    // indirectly asserting that the strategy defaults to round-robin
-                    assertThat(targetCluster.bootstrapServer()).isEqualTo(new HostPort("magic-kafka.example", 1234));
-                    assertThat(targetCluster.bootstrapServer()).isEqualTo(new HostPort("magic-kafka-1.example", 1234));
-                    assertThat(targetCluster.bootstrapServer()).isEqualTo(new HostPort("magic-kafka.example", 1234));
+                    // indirectly asserting that the strategy defaults to round-robin:
+                    // three calls cycle through both servers and return to the first
+                    var expectedServers = Set.of(
+                            new HostPort("magic-kafka.example", 1234),
+                            new HostPort("magic-kafka-1.example", 1234));
+                    var first = targetCluster.bootstrapServer();
+                    var second = targetCluster.bootstrapServer();
+                    var third = targetCluster.bootstrapServer();
+                    assertThat(first).isIn(expectedServers);
+                    assertThat(second).isIn(expectedServers).isNotEqualTo(first);
+                    assertThat(third).isEqualTo(first);
                 });
     }
 

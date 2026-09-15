@@ -5,6 +5,7 @@
  */
 package io.kroxylicious.proxy.internal;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -20,33 +21,41 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import org.apache.kafka.common.errors.SaslAuthenticationException;
-import org.apache.kafka.common.message.ApiMessageType;
-import org.apache.kafka.common.message.ApiVersionsRequestData;
-import org.apache.kafka.common.message.ApiVersionsResponseData;
-import org.apache.kafka.common.message.FetchRequestData;
-import org.apache.kafka.common.message.FetchResponseData;
-import org.apache.kafka.common.message.MetadataRequestData;
-import org.apache.kafka.common.message.MetadataResponseData;
-import org.apache.kafka.common.message.ProduceRequestData;
-import org.apache.kafka.common.message.ProduceResponseData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.message.SaslAuthenticateRequestData;
-import org.apache.kafka.common.message.SaslAuthenticateResponseData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
-import org.apache.kafka.common.protocol.types.RawTaggedField;
 import org.apache.kafka.common.security.scram.internals.ScramMechanism;
 import org.assertj.core.api.InstanceOfAssertFactories;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
+import io.netty.util.ReferenceCountUtil;
 
+import io.kroxylicious.kafka.common.message.ApiMessageType;
+import io.kroxylicious.kafka.common.message.ApiVersionsRequestData;
+import io.kroxylicious.kafka.common.message.ApiVersionsResponseData;
+import io.kroxylicious.kafka.common.message.FetchRequestData;
+import io.kroxylicious.kafka.common.message.FetchResponseData;
+import io.kroxylicious.kafka.common.message.MetadataRequestData;
+import io.kroxylicious.kafka.common.message.MetadataResponseData;
+import io.kroxylicious.kafka.common.message.ProduceRequestData;
+import io.kroxylicious.kafka.common.message.ProduceResponseData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateRequestData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateResponseData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.protocol.types.RawTaggedField;
 import io.kroxylicious.proxy.authentication.Subject;
 import io.kroxylicious.proxy.authentication.User;
 import io.kroxylicious.proxy.filter.ApiVersionsRequestFilter;
@@ -64,6 +73,7 @@ import io.kroxylicious.proxy.frame.DecodedRequestFrame;
 import io.kroxylicious.proxy.frame.DecodedResponseFrame;
 import io.kroxylicious.proxy.frame.OpaqueRequestFrame;
 import io.kroxylicious.proxy.frame.OpaqueResponseFrame;
+import io.kroxylicious.proxy.frame.PathElement;
 import io.kroxylicious.proxy.internal.filter.RequestFilterResultBuilderImpl;
 import io.kroxylicious.proxy.internal.filter.ResponseFilterResultBuilderImpl;
 
@@ -73,6 +83,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 
@@ -82,6 +93,22 @@ class FilterHandlerTest extends FilterHarness {
     private static final RawTaggedField MARK = createTag(ARBITRARY_TAG, "mark");
     public static final long TIMEOUT_MS = 50L;
     public static final String AUTHORIZATION_ID = "Bob's yer uncle";
+
+    private SimpleMeterRegistry simpleMeterRegistry;
+
+    @BeforeEach
+    void setUpMetrics() {
+        simpleMeterRegistry = new SimpleMeterRegistry();
+        io.micrometer.core.instrument.Metrics.globalRegistry.add(simpleMeterRegistry);
+    }
+
+    @AfterEach
+    void tearDownMetrics() {
+        if (simpleMeterRegistry != null) {
+            simpleMeterRegistry.getMeters().forEach(io.micrometer.core.instrument.Metrics.globalRegistry::remove);
+            io.micrometer.core.instrument.Metrics.globalRegistry.remove(simpleMeterRegistry);
+        }
+    }
 
     @Test
     void testForwardRequest() {
@@ -100,6 +127,35 @@ class FilterHandlerTest extends FilterHarness {
         channel.writeOutbound(Unpooled.EMPTY_BUFFER);
         var propagated = channel.readOutbound();
         assertThat(propagated).isSameAs(Unpooled.EMPTY_BUFFER);
+    }
+
+    @Test
+    void canForwardEmptyBuffersOnRead() {
+        buildChannel((ApiVersionsRequestFilter) (apiVersion, header, request, context) -> context.forwardRequest(header, request));
+        channel.writeInbound(Unpooled.EMPTY_BUFFER);
+        var propagated = channel.readInbound();
+        assertThat(propagated).isSameAs(Unpooled.EMPTY_BUFFER);
+    }
+
+    @Test
+    void writeRejectsNullMessage() {
+        buildChannel((ApiVersionsRequestFilter) (apiVersion, header, request, context) -> context.forwardRequest(header, request));
+        FilterHandler handler = channel.pipeline().get(FilterHandler.class);
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+        ChannelPromise promise = mock(ChannelPromise.class);
+        assertThatThrownBy(() -> handler.write(ctx, null, promise))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unexpected message writing to downstream");
+    }
+
+    @Test
+    void channelReadRejectsNullMessage() {
+        buildChannel((ApiVersionsRequestFilter) (apiVersion, header, request, context) -> context.forwardRequest(header, request));
+        FilterHandler handler = channel.pipeline().get(FilterHandler.class);
+        ChannelHandlerContext ctx = mock(ChannelHandlerContext.class);
+        assertThatThrownBy(() -> handler.channelRead(ctx, null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unexpected message writing to upstream");
     }
 
     @Test
@@ -123,7 +179,7 @@ class FilterHandlerTest extends FilterHarness {
         DecodedResponseFrame<?> propagated = channel.readOutbound();
         assertEquals(responseData, propagated.body(), "expected ApiVersionsResponseData to be forwarded");
         assertThat(propagated).isInstanceOfSatisfying(InternalResponseFrame.class, internalResponse -> {
-            assertThat(internalResponse.recipient()).isSameAs(request.recipient());
+            assertThat(internalResponse.routing()).isSameAs(request.routing());
             assertThat(internalResponse.promise()).isSameAs(request.promise());
         });
     }
@@ -165,6 +221,8 @@ class FilterHandlerTest extends FilterHarness {
     }
 
     @Test
+    // identity check: Thread has no value semantics
+    @SuppressWarnings("ReferenceEquality")
     void deferredRequestMethodsDispatchedOnEventloop() {
         var req1 = new ApiVersionsRequestData().setClientSoftwareName("req1");
         var req2 = new ApiVersionsRequestData().setClientSoftwareName("req2");
@@ -537,7 +595,7 @@ class FilterHandlerTest extends FilterHarness {
         ApiVersionsRequestFilter filter = (apiVersion, header, request, context) -> stageFunction.apply(header, request);
         buildChannel(filter);
         var frame = writeRequest(new ApiVersionsRequestData());
-        channel.runPendingTasks();
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isFalse();
         var propagated = channel.readInbound();
@@ -573,7 +631,7 @@ class FilterHandlerTest extends FilterHarness {
         ApiVersionsResponseFilter filter = (apiVersion, header, response, context) -> stageFunction.apply(header, response);
         buildChannel(filter);
         var frame = writeResponse(new ApiVersionsResponseData());
-        channel.runPendingTasks();
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isFalse();
         var propagated = channel.readOutbound();
@@ -598,7 +656,7 @@ class FilterHandlerTest extends FilterHarness {
         writeRequest(new ApiVersionsRequestData().setClientSoftwareName("should not be processed"));
         // the filter handler will have queued up the second request, awaiting the completion of the first.
         filterFuture.complete(new RequestFilterResultBuilderImpl().withCloseConnection().build());
-        channel.runPendingTasks();
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isFalse();
         var propagated = channel.readOutbound();
@@ -620,7 +678,7 @@ class FilterHandlerTest extends FilterHarness {
         writeArbitraryOpaqueRequest(opaqueBuf);
         // the filter handler will have queued up the opaque request, awaiting the completion of the first.
         filterFuture.complete(new RequestFilterResultBuilderImpl().withCloseConnection().build());
-        channel.runPendingTasks();
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isFalse();
         var propagated = channel.readOutbound();
@@ -643,7 +701,7 @@ class FilterHandlerTest extends FilterHarness {
         writeResponse(new ApiVersionsResponseData().setErrorCode((short) 2));
         // the filter handler will have queued up the second response, awaiting the completion of the first.
         filterFuture.complete(new ResponseFilterResultBuilderImpl().withCloseConnection().build());
-        channel.runPendingTasks();
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isFalse();
         var propagated = channel.readInbound();
@@ -667,7 +725,7 @@ class FilterHandlerTest extends FilterHarness {
         writeResponse(new ApiVersionsResponseData().setErrorCode((short) 2));
         // the filter handler will have queued up the second response, awaiting the completion of the first.
         filterFuture.complete(new ResponseFilterResultBuilderImpl().withCloseConnection().build());
-        channel.runPendingTasks();
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isFalse();
         var propagated = channel.readOutbound();
@@ -725,6 +783,7 @@ class FilterHandlerTest extends FilterHarness {
         };
         buildChannel(filter);
         writeRequest(new ApiVersionsRequestData());
+        runAllPendingTasks();
 
         assertThat(channel.isOpen()).isEqualTo(!withClose);
 
@@ -734,6 +793,52 @@ class FilterHandlerTest extends FilterHarness {
         var forwardedResponseFrame = channel.readOutbound();
         assertThat(forwardedResponseFrame).isNotNull();
         assertThat(((DecodedResponseFrame<?>) forwardedResponseFrame).body()).isEqualTo(shortCircuitResponse);
+    }
+
+    @Test
+    void shortCircuitResponseForClientRequestDecrementsInFlightCount() {
+        // Given: a client request already counted as in-flight by the CCSM
+        var shortCircuitResponse = new ApiVersionsResponseData();
+        ApiVersionsRequestFilter filter = (apiVersion, header, request, context) -> context.requestFilterResultBuilder()
+                .shortCircuitResponse(shortCircuitResponse)
+                .completed();
+        buildChannel(filter);
+        var request = new DecodedRequestFrame<>((short) 3, 1, false, new RequestHeaderData(), new ApiVersionsRequestData());
+        clientConnectionStateMachine.onClientRequest(request);
+
+        // When
+        writeRequest(request);
+        runAllPendingTasks();
+        var closedFuture = clientConnectionStateMachine.drain(Duration.ofSeconds(30));
+        runAllPendingTasks();
+
+        // Then: the in-flight count dropped to zero, so the drain fires immediately rather than
+        // waiting out the full drain timeout
+        assertThat(closedFuture).isCompleted();
+        channel.readOutbound();
+    }
+
+    @Test
+    void shortCircuitResponseForInternalRequestDoesNotDecrementInFlightCount() {
+        // Given: a real client request counted as in-flight, and a separate OOB/internal
+        // request that a filter short-circuits — the OOB request was never counted
+        var shortCircuitResponse = new ApiVersionsResponseData();
+        ApiVersionsRequestFilter filter = (apiVersion, header, request, context) -> context.requestFilterResultBuilder()
+                .shortCircuitResponse(shortCircuitResponse)
+                .completed();
+        buildChannel(filter);
+        var clientRequest = new DecodedRequestFrame<>((short) 3, 1, false, new RequestHeaderData(), new ApiVersionsRequestData());
+        clientConnectionStateMachine.onClientRequest(clientRequest);
+
+        // When
+        writeInternalRequest(new ApiVersionsRequestData(), filter);
+        runAllPendingTasks();
+        var closedFuture = clientConnectionStateMachine.drain(Duration.ofSeconds(30));
+        runAllPendingTasks();
+
+        // Then: the client request's in-flight count is untouched, so the drain does not fire
+        assertThat(closedFuture).isNotCompleted();
+        channel.readOutbound();
     }
 
     @Test
@@ -1055,8 +1160,9 @@ class FilterHandlerTest extends FilterHarness {
 
     private Thread obtainEventLoop() {
         var eventLoopThreadFuture = new CompletableFuture<Thread>();
-        channel.eventLoop().submit(() -> eventLoopThreadFuture.complete(Thread.currentThread()));
+        var submitFuture = channel.eventLoop().submit(() -> eventLoopThreadFuture.complete(Thread.currentThread()));
         channel.runPendingTasks();
+        assertThat(submitFuture.isSuccess()).isTrue();
         assertThat(eventLoopThreadFuture).isCompleted();
         return eventLoopThreadFuture.getNow(null);
     }
@@ -1193,42 +1299,10 @@ class FilterHandlerTest extends FilterHarness {
     }
 
     @Test
-    void forwardRequestUsingDeprecatedNonSpecificFilterApi() {
-        var filter = new RequestFilter() {
-            @Override
-            @SuppressWarnings("removal")
-            public CompletionStage<RequestFilterResult> onRequest(ApiKeys apiKey, RequestHeaderData header, ApiMessage request, FilterContext context) {
-                return context.requestFilterResultBuilder().forward(header, request)
-                        .completed();
-            }
-        };
-        buildChannel(filter);
-        var frame = writeRequest(new ApiVersionsRequestData());
-        var propagated = channel.readInbound();
-        assertEquals(frame, propagated, "Expect it to be the frame that was sent");
-    }
-
-    @Test
     void forwardResponseUsingNonSpecificFilterApi() {
         var filter = new ResponseFilter() {
             @Override
             public CompletionStage<ResponseFilterResult> onResponse(ApiKeys apiKey, short apiVersion, ResponseHeaderData header, ApiMessage response,
-                                                                    FilterContext context) {
-                return context.forwardResponse(header, response);
-            }
-        };
-        buildChannel(filter);
-        var frame = writeResponse(new ApiVersionsResponseData());
-        var propagated = channel.readOutbound();
-        assertEquals(frame, propagated, "Expect it to be the frame that was sent");
-    }
-
-    @Test
-    void forwardResponseUsingDeprecatedNonSpecificFilterApi() {
-        var filter = new ResponseFilter() {
-            @Override
-            @SuppressWarnings("removal")
-            public CompletionStage<ResponseFilterResult> onResponse(ApiKeys apiKey, ResponseHeaderData header, ApiMessage response,
                                                                     FilterContext context) {
                 return context.forwardResponse(header, response);
             }
@@ -1278,6 +1352,12 @@ class FilterHandlerTest extends FilterHarness {
                     assertThat(saslContext.authorizationId()).isEqualTo(AUTHORIZATION_ID);
                     assertThat(saslContext.mechanismName()).isEqualTo(ScramMechanism.SCRAM_SHA_512.mechanismName());
                 });
+
+        assertThat(simpleMeterRegistry.get("kroxylicious_client_auth_total")
+                .tags("virtual_cluster", "TestVirtualCluster",
+                        "mechanism", ScramMechanism.SCRAM_SHA_512.mechanismName(),
+                        "outcome", "success")
+                .counter().count()).isEqualTo(1.0);
     }
 
     @Test
@@ -1298,5 +1378,194 @@ class FilterHandlerTest extends FilterHarness {
 
         assertThat(clientConnectionStateMachine.clientSaslContext())
                 .isEmpty();
+
+        assertThat(simpleMeterRegistry.get("kroxylicious_client_auth_total")
+                .tags("virtual_cluster", "TestVirtualCluster",
+                        "mechanism", ScramMechanism.SCRAM_SHA_512.mechanismName(),
+                        "outcome", "failure")
+                .counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void shouldAccumulateAuthMetricsOnReauthentication() {
+        // Given
+        SaslAuthenticateResponseData responseData = new SaslAuthenticateResponseData().setSessionLifetimeMs(10_000);
+        buildChannel((SaslAuthenticateRequestFilter) (apiVersion, header, request, context) -> {
+            context.clientSaslAuthenticationSuccess(ScramMechanism.SCRAM_SHA_512.mechanismName(), new Subject(new User(AUTHORIZATION_ID)));
+            return context.requestFilterResultBuilder().shortCircuitResponse(responseData).completed();
+        });
+
+        // When
+        writeRequest(new SaslAuthenticateRequestData().setAuthBytes("Let me IN!".getBytes(UTF_8)));
+        channel.readOutbound();
+        writeRequest(new SaslAuthenticateRequestData().setAuthBytes("Let me IN again!".getBytes(UTF_8)));
+        channel.readOutbound();
+
+        // Then
+        assertThat(simpleMeterRegistry.get("kroxylicious_client_auth_total")
+                .tags("virtual_cluster", "TestVirtualCluster",
+                        "mechanism", ScramMechanism.SCRAM_SHA_512.mechanismName(),
+                        "outcome", "success")
+                .counter().count()).isEqualTo(2.0);
+    }
+
+    @Test
+    void shouldRecordUnknownMechanismOnSaslAuthFailureWithNullMechanism() {
+        // Given
+        SaslAuthenticateResponseData responseData = new SaslAuthenticateResponseData().setErrorMessage("denied");
+        buildChannel((SaslAuthenticateRequestFilter) (apiVersion, header, request, context) -> {
+            context.clientSaslAuthenticationFailure(null, null, new SaslAuthenticationException("denied"));
+            return context.requestFilterResultBuilder().shortCircuitResponse(responseData).completed();
+        });
+
+        // When
+        writeRequest(new SaslAuthenticateRequestData().setAuthBytes("Let me IN!".getBytes(UTF_8)));
+
+        // Then
+        channel.readOutbound();
+
+        assertThat(simpleMeterRegistry.get("kroxylicious_client_auth_total")
+                .tags("virtual_cluster", "TestVirtualCluster",
+                        "mechanism", "unknown",
+                        "outcome", "failure")
+                .counter().count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void internalResponsePassedThroughNonRecipientFilterThatFailsClosesChannel() {
+        // Given
+        ApiVersionsResponseFilter failingFilter = (apiVersion, header, response, context) -> CompletableFuture.failedStage(new RuntimeException("filter failed"));
+        buildChannel(failingFilter);
+        var responseData = new ApiVersionsResponseData();
+        var responseHeader = new ResponseHeaderData().setCorrelationId(42);
+        var frame = new InternalResponseFrame<>(ApiKeys.API_VERSIONS.latestVersion(), 42, responseHeader, responseData);
+        // Addressed to some other (non-recipient) filter, so this handler observes it via onResponse.
+        frame.setRouting(new PathElement.FilterOriginator("dummy-recipient", 0, new CompletableFuture<>(), PathElement.ClientOrigin.INSTANCE));
+
+        // When
+        assertThat(channel.writeOneOutbound(frame).cause()).isNull();
+        channel.runPendingTasks();
+
+        // Then
+        assertThat(channel.isOpen()).isFalse();
+    }
+
+    @Test
+    void internalRequestFrameThroughFailingFilterClosesChannel() {
+        // Given
+        ApiVersionsRequestFilter failingFilter = (apiVersion, header, request, context) -> CompletableFuture.failedStage(new RuntimeException("filter failed"));
+        buildChannel(failingFilter);
+        var dummyRecipient = (ApiVersionsRequestFilter) (apiVersion, header, request, context) -> null;
+
+        // When
+        writeInternalRequest(new ApiVersionsRequestData(), dummyRecipient);
+        channel.runPendingTasks();
+
+        // Then
+        assertThat(channel.isOpen()).isFalse();
+    }
+
+    @Test
+    void deferredRequestFilterCompletesExceptionallyClosesChannel() {
+        // Given
+        var filterFuture = new CompletableFuture<RequestFilterResult>();
+        ApiVersionsRequestFilter filter = (apiVersion, header, request, context) -> filterFuture;
+        buildChannel(filter);
+        writeRequest(new ApiVersionsRequestData());
+
+        // When
+        filterFuture.completeExceptionally(new RuntimeException("filter failed"));
+        channel.runPendingTasks();
+
+        // Then
+        assertThat(channel.isOpen()).isFalse();
+    }
+
+    @Test
+    void deferredResponseFilterCompletesExceptionallyClosesChannel() {
+        // Given
+        var filterFuture = new CompletableFuture<ResponseFilterResult>();
+        ApiVersionsResponseFilter filter = (apiVersion, header, response, context) -> filterFuture;
+        buildChannel(filter);
+        writeResponse(new ApiVersionsResponseData());
+
+        // When
+        filterFuture.completeExceptionally(new RuntimeException("filter failed"));
+        channel.runPendingTasks();
+
+        // Then
+        assertThat(channel.isOpen()).isFalse();
+    }
+
+    @Test
+    void opaqueResponseWriteFailurePropagatesToCallerPromise() {
+        // Given
+        var cause = new RuntimeException("simulated write failure");
+        ApiVersionsResponseFilter filter = (apiVersion, header, response, context) -> context.forwardResponse(header, response);
+        buildChannel(filter);
+        channel.pipeline().addFirst("failWrites", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+                ReferenceCountUtil.release(msg);
+                promise.setFailure(cause);
+            }
+        });
+
+        // When
+        ByteBuf buffer = Unpooled.buffer();
+        var frame = new OpaqueResponseFrame(ApiKeys.PRODUCE.id, ApiKeys.PRODUCE.latestVersion(), buffer, 55, buffer.readableBytes());
+        ChannelFuture future = channel.writeOneOutbound(frame);
+
+        // Then
+        assertThat(future.isDone()).isTrue();
+        assertThat(future.cause()).isSameAs(cause);
+    }
+
+    @Test
+    void upstreamResponseWriteFailurePropagatesToCallerPromise() {
+        // Given
+        var cause = new RuntimeException("simulated write failure");
+        ApiVersionsResponseFilter filter = (apiVersion, header, response, context) -> context.forwardResponse(header, response);
+        buildChannel(filter);
+        channel.pipeline().addFirst("failWrites", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+                ReferenceCountUtil.release(msg);
+                promise.setFailure(cause);
+            }
+        });
+
+        // When
+        var responseData = new ApiVersionsResponseData();
+        var header = new ResponseHeaderData().setCorrelationId(42);
+        var frame = new DecodedResponseFrame<>(ApiKeys.API_VERSIONS.latestVersion(), 42, header, responseData);
+        ChannelFuture future = channel.writeOneOutbound(frame);
+
+        // Then
+        assertThat(future.isDone()).isTrue();
+        assertThat(future.cause()).isSameAs(cause);
+    }
+
+    @Test
+    void shortCircuitResponseWriteFailureReachesExceptionCaught() {
+        // Given
+        var cause = new RuntimeException("simulated write failure");
+        ApiVersionsRequestFilter filter = (apiVersion, header, request, context) -> context.requestFilterResultBuilder()
+                .shortCircuitResponse(new ApiVersionsResponseData())
+                .completed();
+        buildChannel(filter);
+        channel.pipeline().addFirst("failWrites", new ChannelOutboundHandlerAdapter() {
+            @Override
+            public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+                ReferenceCountUtil.release(msg);
+                promise.setFailure(cause);
+            }
+        });
+
+        // When
+        var when = assertThatThrownBy(() -> writeRequest(new ApiVersionsRequestData()));
+
+        // Then
+        when.isSameAs(cause);
     }
 }

@@ -8,10 +8,9 @@ package io.kroxylicious.filter.entityisolation;
 
 import java.util.concurrent.CompletionStage;
 
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiMessage;
-
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.RequestFilterResult;
 import io.kroxylicious.proxy.filter.ResponseFilterResult;
@@ -28,12 +27,12 @@ import edu.umd.cs.findbugs.annotations.UnknownNullness;
 interface EntityIsolationProcessor<Q extends ApiMessage, S extends ApiMessage, C> {
 
     /**
-     * @return The inclusive minimum version of the range of versions supported
+     * Returns the inclusive minimum version of the supported version range.
      */
     short minSupportedVersion();
 
     /**
-     * @return The inclusive maximum version of the range of versions supported
+     * Returns the inclusive maximum version of the supported version range.
      */
     short maxSupportedVersion();
 

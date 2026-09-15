@@ -40,12 +40,10 @@ class VirtualClusterLifecycleTest {
     private static final String CLUSTER_NAME = "test-cluster";
     private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(5);
     private VirtualClusterLifecycle manager;
-    private ClientConnectionStateMachine ccsm;
 
     @BeforeEach
     void setUp() {
         manager = new VirtualClusterLifecycle(CLUSTER_NAME, DRAIN_TIMEOUT);
-        ccsm = mock(ClientConnectionStateMachine.class);
     }
 
     @Test
@@ -86,9 +84,10 @@ class VirtualClusterLifecycleTest {
         manager.initializationSucceeded();
 
         // when
-        manager.startDraining();
+        var drainFuture = manager.startDraining();
 
         // then
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
         VirtualClusterLifecycleState state = manager.state();
         assertThat(state).asInstanceOf(InstanceOfAssertFactories.type(Draining.class))
                 .satisfies(draining -> assertThat(draining.drainTimeout()).isEqualTo(DRAIN_TIMEOUT));
@@ -98,12 +97,14 @@ class VirtualClusterLifecycleTest {
     void shouldTransitionFromDrainingToStopped() {
         // given
         manager.initializationSucceeded();
-        manager.startDraining();
+        var drainFuture = manager.startDraining();
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
 
         // when
         manager.drainComplete();
 
         // then
+        assertThat(drainFuture).isCompletedWithValue(null);
         assertThat(manager.state()).isInstanceOf(Stopped.class);
     }
 
@@ -144,19 +145,40 @@ class VirtualClusterLifecycleTest {
     }
 
     @Test
+    void stopIsIdempotentWhenAlreadyStopped() {
+        // given — drive to Stopped via Initializing
+        manager.stop();
+        var initialState = manager.state();
+
+        // when — a second stop() (e.g. from a concurrent shutdown path that lost the race)
+        // must NOT throw. Pinned because the registry relies on this to avoid
+        // IllegalStateException when two callers race on Failed/Initializing.
+        manager.stop();
+
+        // then — state unchanged
+        assertThat(manager.state()).isSameAs(initialState);
+    }
+
+    @Test
     void shouldHaveNoPriorFailureCauseWhenStoppedFromDraining() {
         // given
         manager.initializationSucceeded();
-        manager.startDraining();
+        var drainFuture = manager.startDraining();
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
 
         // when
         manager.drainComplete();
 
         // then
+        assertThat(drainFuture).isCompletedWithValue(null);
         assertThat(manager.state())
                 .isInstanceOfSatisfying(Stopped.class, stopped -> assertThat(stopped.priorFailureCause()).isNull());
     }
 
+    // FutureReturnValueIgnored: the startDraining() call in "startDraining from INITIALIZING" is
+    // the invalid transition under test — it throws before a future is returned. The call in
+    // "stop from DRAINING" is valid setup to reach Draining state; stop() is the invalid call.
+    @SuppressWarnings("FutureReturnValueIgnored")
     static Stream<Arguments> invalidTransitions() {
         return Stream.of(
                 argumentSet("initializationSucceeded from SERVING", (Runnable) () -> {
@@ -178,6 +200,12 @@ class VirtualClusterLifecycleTest {
                     m.initializationSucceeded();
                     m.stop();
                 }),
+                argumentSet("stop from DRAINING", (Runnable) () -> {
+                    var m = new VirtualClusterLifecycle("c", DRAIN_TIMEOUT);
+                    m.initializationSucceeded();
+                    m.startDraining();
+                    m.stop();
+                }),
                 argumentSet("initializationSucceeded from STOPPED", (Runnable) () -> {
                     var m = new VirtualClusterLifecycle("c", DRAIN_TIMEOUT);
                     m.initializationFailed(new RuntimeException("x"));
@@ -196,6 +224,7 @@ class VirtualClusterLifecycleTest {
     @Test
     void shouldRejectConnectionRegistrationWhenInitializing() {
         // given - lifecycle starts in Initializing
+        var ccsm = mock(ClientConnectionStateMachine.class);
 
         // when
         var registered = manager.registerConnection(ccsm);
@@ -209,6 +238,7 @@ class VirtualClusterLifecycleTest {
     void shouldAcceptConnectionRegistrationWhenServing() {
         // given
         manager.initializationSucceeded();
+        var ccsm = mock(ClientConnectionStateMachine.class);
 
         // when
         var registered = manager.registerConnection(ccsm);
@@ -222,7 +252,9 @@ class VirtualClusterLifecycleTest {
     void shouldRejectConnectionRegistrationWhenDraining() {
         // given
         manager.initializationSucceeded();
-        manager.startDraining();
+        var drainFuture = manager.startDraining();
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
+        var ccsm = mock(ClientConnectionStateMachine.class);
 
         // when
         var registered = manager.registerConnection(ccsm);
@@ -235,6 +267,7 @@ class VirtualClusterLifecycleTest {
     void shouldRejectConnectionRegistrationWhenFailed() {
         // given
         manager.initializationFailed(new RuntimeException("oops"));
+        var ccsm = mock(ClientConnectionStateMachine.class);
 
         // when
         var registered = manager.registerConnection(ccsm);
@@ -249,6 +282,7 @@ class VirtualClusterLifecycleTest {
         // given
         manager.initializationFailed(new RuntimeException("oops"));
         manager.stop();
+        var ccsm = mock(ClientConnectionStateMachine.class);
 
         // when
         var registered = manager.registerConnection(ccsm);
@@ -256,6 +290,8 @@ class VirtualClusterLifecycleTest {
         // then
         assertThat(registered).isFalse();
     }
+
+    // --- Concurrency ---
 
     @Test
     void concurrentRegisterAndDeregisterDoesNotLoseConnection() throws Exception {

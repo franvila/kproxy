@@ -12,9 +12,11 @@ import java.security.GeneralSecurityException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -37,6 +39,7 @@ import org.mockito.Mock;
 import org.mockito.hamcrest.MockitoHamcrest;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import io.kroxylicious.proxy.KafkaProxy;
 import io.kroxylicious.proxy.config.ConfigurationBuilder;
 import io.kroxylicious.proxy.config.VirtualClusterBuilder;
 import io.kroxylicious.proxy.config.VirtualClusterGatewayBuilder;
@@ -46,10 +49,11 @@ import io.kroxylicious.testing.kafka.common.KeytoolCertificateGenerator;
 import edu.umd.cs.findbugs.annotations.NonNull;
 
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.DEFAULT_GATEWAY_NAME;
-import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.DEFAULT_PROXY_BOOTSTRAP;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.DEFAULT_VIRTUAL_CLUSTER;
+import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.OS_ASSIGNED_BOOTSTRAP;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.proxy;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
@@ -60,6 +64,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mock.Strictness.LENIENT;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -294,16 +299,11 @@ class DefaultKroxyliciousTesterTest {
             tester.admin(VIRTUAL_CLUSTER_B);
             tester.admin(VIRTUAL_CLUSTER_C);
             // The doNothing is required so the try-with-resources block completes successfully
-            doThrow(new IllegalStateException(EXCEPTION_MESSAGE)).doNothing().when(kroxyliciousClientsA).close();
+            IllegalStateException failureReason = new IllegalStateException(EXCEPTION_MESSAGE);
+            doThrow(failureReason).doNothing().when(kroxyliciousClientsA).close();
 
             // When
-            try {
-                tester.close();
-                fail("Expected tester to re-throw");
-            }
-            catch (RuntimeException re) {
-                // not my problem
-            }
+            assertThatThrownBy(tester::close).hasCause(failureReason);
 
             // Then
             verify(kroxyliciousClientsA).close();
@@ -323,6 +323,75 @@ class DefaultKroxyliciousTesterTest {
             // When
             // Then
             assertThatThrownBy(tester::close)
+                    .cause()
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage(EXCEPTION_MESSAGE);
+        }
+    }
+
+    @Test
+    void closeClientsForEvictsOnlyTheNamedClustersClients() {
+        // Given — touch every cluster so each has a cached KroxyliciousClients in the tester.
+        try (var tester = buildTester()) {
+            tester.admin(VIRTUAL_CLUSTER_A);
+            tester.admin(VIRTUAL_CLUSTER_B);
+            tester.admin(VIRTUAL_CLUSTER_C);
+
+            // When — evict only cluster A's clients.
+            tester.closeClientsFor(VIRTUAL_CLUSTER_A);
+
+            // Then — A is closed, B and C are untouched.
+            verify(kroxyliciousClientsA).close();
+            verify(kroxyliciousClientsB, never()).close();
+            verify(kroxyliciousClientsC, never()).close();
+        }
+    }
+
+    @SuppressWarnings("resource")
+    @Test
+    void closeClientsForCausesNextAccessToRebuildTheClient() {
+        // Given — touch cluster A so the cache holds a client built for it.
+        try (var tester = buildTester()) {
+            tester.admin(VIRTUAL_CLUSTER_A);
+
+            // When — evict, then access again.
+            tester.closeClientsFor(VIRTUAL_CLUSTER_A);
+            tester.admin(VIRTUAL_CLUSTER_A);
+
+            // Then — ClientFactory.build was called twice: once for the original cached client,
+            // and once for the rebuilt-after-eviction client. This is the load-bearing property
+            // for callers — closeClientsFor must invalidate, not just close, so that the next
+            // tester.producer/consumer/admin picks up the current configuration.
+            verify(clientFactory, times(2)).build(eq(new GatewayId(VIRTUAL_CLUSTER_A, DEFAULT_GATEWAY_NAME)), anyMap());
+        }
+    }
+
+    @Test
+    void closeClientsForIsNoOpWhenClusterHasNoCachedClient() {
+        try (var tester = buildTester()) {
+            // Don't touch cluster A — nothing is cached for it.
+
+            // When
+            tester.closeClientsFor(VIRTUAL_CLUSTER_A);
+
+            // Then — no close call attempted on any per-cluster client mock.
+            verify(kroxyliciousClientsA, never()).close();
+            verify(kroxyliciousClientsB, never()).close();
+            verify(kroxyliciousClientsC, never()).close();
+        }
+    }
+
+    @Test
+    void closeClientsForSurfacesCloseFailureAsIllegalStateException() {
+        // Given — cluster A's cached client throws on close. doNothing on the second
+        // invocation so the try-with-resources block doesn't fail when it cleans up.
+        try (var tester = buildTester()) {
+            tester.admin(VIRTUAL_CLUSTER_A);
+            doThrow(new IllegalStateException(EXCEPTION_MESSAGE)).doNothing().when(kroxyliciousClientsA).close();
+
+            // When — closeClientsFor must NOT swallow the failure silently; tests need to see it.
+            assertThatThrownBy(() -> tester.closeClientsFor(VIRTUAL_CLUSTER_A))
+                    .isInstanceOf(IllegalStateException.class)
                     .cause()
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessage(EXCEPTION_MESSAGE);
@@ -585,6 +654,58 @@ class DefaultKroxyliciousTesterTest {
         }
     }
 
+    @Test
+    void shouldReturnActualBoundPortFromGetBootstrapAddress() {
+        // Given - embedded proxy with OS-assigned port (port=0)
+        try (var tester = KroxyliciousTesters.mockKafkaKroxyliciousTester(KroxyliciousConfigUtils::proxy)) {
+            // When
+            var address = tester.getBootstrapAddress();
+
+            // Then - port is the actual OS-bound port, not the configured 0
+            assertThat(HostPort.parse(address).port()).isPositive();
+        }
+    }
+
+    @Test
+    void proxyDeathIsSurfacedOnClose() {
+        // Given — capture the startup future so we can complete it exceptionally from the test
+        AtomicReference<CompletableFuture<Void>> futureRef = new AtomicReference<>();
+        var tester = new KroxyliciousTesterBuilder()
+                .setConfigurationBuilder(proxy(backingCluster))
+                .setKroxyliciousFactory((config, features) -> {
+                    KafkaProxy proxy = DefaultKroxyliciousTester.spawnProxy(config, features);
+                    futureRef.set(proxy.startup()); // idempotent — returns the same future used at startup
+                    return proxy;
+                })
+                .setClientFactory(clientFactory)
+                .createDefaultKroxyliciousTester();
+
+        // Simulate proxy crash: completing the startup future exceptionally fires the
+        // whenComplete callback synchronously, setting proxyDeathCause before close() reads it.
+        var crashCause = new RuntimeException("proxy crashed mid-test");
+        futureRef.get().completeExceptionally(crashCause);
+
+        // When / Then
+        assertThatThrownBy(tester::close)
+                .isInstanceOf(IllegalStateException.class)
+                .cause()
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Proxy died unexpectedly during test")
+                .hasCause(crashCause);
+    }
+
+    @Test
+    void nonKafkaProxyFactorySkipsDeathDetectionAndClosesNormally() throws Exception {
+        // Given — factory returns a plain AutoCloseable (not a KafkaProxy), so the instanceof
+        // guard in the constructor is not entered and no death callback is registered.
+        AutoCloseable fakeProxy = mock(AutoCloseable.class);
+        var tester = new DefaultKroxyliciousTester(proxy(backingCluster), config -> fakeProxy, clientFactory, null);
+
+        // When / Then
+        assertThatCode(tester::close).doesNotThrowAnyException();
+        verify(fakeProxy).close();
+    }
+
     private void allowCreateTopic(KroxyliciousClients kroxyliciousClients, Admin admin) {
         when(kroxyliciousClients.admin()).thenReturn(admin);
         final CreateTopicsResult createTopicsResultA = mock(CreateTopicsResult.class);
@@ -617,11 +738,11 @@ class DefaultKroxyliciousTesterTest {
                 .withNewTargetCluster()
                 .withBootstrapServers(backingCluster)
                 .endTargetCluster()
-                .addToGateways(KroxyliciousConfigUtils.defaultPortIdentifiesNodeGatewayBuilder(DEFAULT_PROXY_BOOTSTRAP).build())
+                .addToGateways(KroxyliciousConfigUtils.defaultPortIdentifiesNodeGatewayBuilder(OS_ASSIGNED_BOOTSTRAP).build())
                 .addToGateways(new VirtualClusterGatewayBuilder()
                         .withName(CUSTOM_GATEWAY_NAME)
                         .withNewPortIdentifiesNode()
-                        .withBootstrapAddress(new HostPort(DEFAULT_PROXY_BOOTSTRAP.host(), DEFAULT_PROXY_BOOTSTRAP.port() + 10))
+                        .withBootstrapAddress(OS_ASSIGNED_BOOTSTRAP)
                         .endPortIdentifiesNode()
                         .build());
         configurationBuilder
@@ -641,7 +762,7 @@ class DefaultKroxyliciousTesterTest {
                 .withNewTargetCluster()
                 .withBootstrapServers(backingCluster)
                 .endTargetCluster()
-                .addToGateways(KroxyliciousConfigUtils.defaultPortIdentifiesNodeGatewayBuilder(DEFAULT_PROXY_BOOTSTRAP)
+                .addToGateways(KroxyliciousConfigUtils.defaultPortIdentifiesNodeGatewayBuilder(OS_ASSIGNED_BOOTSTRAP)
                         .withNewTls()
                         .withNewKeyStoreKey()
                         .withStoreFile(keytoolCertificateGenerator.getKeyStoreLocation())

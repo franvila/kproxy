@@ -12,6 +12,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,7 @@ import io.javaoperatorsdk.operator.api.reconciler.Context;
 import io.javaoperatorsdk.operator.api.reconciler.UpdateControl;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
-import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListenerBuilder;
+import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerAddressBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerStatusBuilder;
 
@@ -138,10 +139,12 @@ class KafkaServiceReconcilerTest {
             .endMetadata()
             .withNewSpec()
                 .withNewKafka()
-                    .withListeners(new GenericKafkaListenerBuilder()
+                    .addNewListener()
                             .withName("plain")
+                            .withPort(9092)
+                            .withType(KafkaListenerType.INTERNAL)
                             .withTls(false)
-                            .build())
+                        .endListener()
                 .endKafka()
             .endSpec()
             .withNewStatus()
@@ -163,10 +166,12 @@ class KafkaServiceReconcilerTest {
             .endMetadata()
             .withNewSpec()
                 .withNewKafka()
-                    .withListeners(new GenericKafkaListenerBuilder()
+                    .addNewListener()
                             .withName("tls")
+                            .withPort(9093)
+                            .withType(KafkaListenerType.INTERNAL)
                             .withTls(false)
-                        .build())
+                        .endListener()
                 .endKafka()
             .endSpec()
             .withNewStatus()
@@ -222,9 +227,73 @@ class KafkaServiceReconcilerTest {
 
     @BeforeEach
     void setUp() {
-        // SharedInformerManager is only needed for prepareEventSources(), which these tests don't call
-        SharedInformerManager mockSharedInformerManager = mock(SharedInformerManager.class);
-        kafkaServiceReconciler = new KafkaServiceReconciler(Clock.systemUTC(), mockSharedInformerManager);
+        kafkaServiceReconciler = new KafkaServiceReconciler(
+                Clock.systemUTC(), new SharedInformerManager(mock(KubernetesClient.class), Set.of()));
+    }
+
+    @Test
+    void shouldSetResolvedRefsFalseWhenStrimziKafkaNamespaceNotWatched() {
+        // Given
+        var reconciler = new KafkaServiceReconciler(
+                TEST_CLOCK, new SharedInformerManager(mock(KubernetesClient.class), Set.of("service-namespace")));
+        Context<KafkaService> context = mock();
+        KafkaService service = new KafkaServiceBuilder(SERVICE)
+                .editMetadata()
+                .withNamespace("service-namespace")
+                .endMetadata()
+                .editSpec()
+                .editStrimziKafkaRef()
+                .withNamespace("kafka-namespace")
+                .withListenerName("plain")
+                .endStrimziKafkaRef()
+                .withTls(null)
+                .endSpec()
+                .build();
+
+        // When
+        final UpdateControl<KafkaService> updateControl = reconciler.reconcile(service, context);
+
+        // Then
+        assertThat(updateControl).isNotNull();
+        assertThat(updateControl.getResource()).isPresent();
+        OperatorAssertions.assertThat(updateControl.getResource().get().getStatus())
+                .hasObservedGenerationInSyncWithMetadataOf(service)
+                .singleCondition()
+                .isResolvedRefsFalse(
+                        Condition.REASON_REFS_NOT_FOUND,
+                        "spec.strimziKafkaRef.namespace: namespace kafka-namespace is not watched by this operator");
+    }
+
+    @Test
+    void shouldResolveCrossNamespaceStrimziKafkaWhenNamespaceWatched() {
+        // Given
+        var reconciler = new KafkaServiceReconciler(
+                TEST_CLOCK, new SharedInformerManager(mock(KubernetesClient.class), Set.of("service-namespace", "kafka-namespace")));
+        Context<KafkaService> context = mockContext(Kafka.class);
+        mockGetKafka(context, Optional.of(KAFKA));
+        KafkaService service = new KafkaServiceBuilder(SERVICE)
+                .editMetadata()
+                .withNamespace("service-namespace")
+                .endMetadata()
+                .editSpec()
+                .editStrimziKafkaRef()
+                .withNamespace("kafka-namespace")
+                .withListenerName("plain")
+                .endStrimziKafkaRef()
+                .withTls(null)
+                .endSpec()
+                .build();
+
+        // When
+        final UpdateControl<KafkaService> updateControl = reconciler.reconcile(service, context);
+
+        // Then
+        assertThat(updateControl).isNotNull();
+        assertThat(updateControl.getResource()).isPresent();
+        OperatorAssertions.assertThat(updateControl.getResource().get().getStatus())
+                .hasObservedGenerationInSyncWithMetadataOf(service)
+                .singleCondition()
+                .isResolvedRefsTrue();
     }
 
     @Test
@@ -589,6 +658,12 @@ class KafkaServiceReconcilerTest {
     private static void mockGetKafka(
                                      Context<KafkaService> context,
                                      Optional<Kafka> optional) {
+        KubernetesClient client = context.getClient();
+        if (client == null) {
+            client = mock(KubernetesClient.class);
+            when(context.getClient()).thenReturn(client);
+        }
+        when(client.supports(Kafka.class)).thenReturn(true);
         when(context.getSecondaryResource(Kafka.class, KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME)).thenReturn(optional);
     }
 
@@ -606,16 +681,11 @@ class KafkaServiceReconcilerTest {
         when(context.getSecondaryResource(Secret.class, KafkaServiceReconciler.SECRETS_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME)).thenReturn(optional);
     }
 
-    @SuppressWarnings("unchecked")
-    private static void mockClientSecretsLookup(KubernetesClient client, String namespace, String secretName, Secret secret) {
-        var secretsOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
-        var inNamespaceOp = mock(io.fabric8.kubernetes.client.dsl.MixedOperation.class);
-        var namedOp = mock(io.fabric8.kubernetes.client.dsl.Resource.class);
-
-        when(client.secrets()).thenReturn(secretsOp);
-        when(secretsOp.inNamespace(namespace)).thenReturn(inNamespaceOp);
-        when(inNamespaceOp.withName(secretName)).thenReturn(namedOp);
-        when(namedOp.get()).thenReturn(secret);
+    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
+    private static void mockGetStrimziCaSecret(
+                                               Context<KafkaService> context,
+                                               Optional<Secret> optional) {
+        when(context.getSecondaryResource(Secret.class, KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME)).thenReturn(optional);
     }
 
     @ParameterizedTest
@@ -709,7 +779,7 @@ class KafkaServiceReconcilerTest {
         // Given
         Context<KafkaService> context = mockContext(Kafka.class);
         mockGetKafka(context, Optional.of(kafkaWithListener("tls")));
-        mockClientSecretsLookup(context.getClient(), "test", "my-cluster-cluster-ca-cert", STRIMZI_CA_SECRET);
+        mockGetStrimziCaSecret(context, Optional.of(STRIMZI_CA_SECRET));
 
         KafkaService service = new KafkaServiceBuilder(SERVICE)
                 .editMetadata()
@@ -749,10 +819,12 @@ class KafkaServiceReconcilerTest {
         return new KafkaBuilder(KAFKA)
                 .editSpec()
                 .editKafka()
-                .withListeners(new GenericKafkaListenerBuilder()
-                        .withName(listenerName)
-                        .withTls(false)
-                        .build())
+                .addNewListener()
+                .withName(listenerName)
+                .withPort(9092)
+                .withType(KafkaListenerType.INTERNAL)
+                .withTls(false)
+                .endListener()
                 .endKafka()
                 .endSpec()
                 .editStatus()

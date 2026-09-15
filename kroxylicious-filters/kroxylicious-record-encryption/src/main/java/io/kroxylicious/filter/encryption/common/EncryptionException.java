@@ -15,11 +15,12 @@ import edu.umd.cs.findbugs.annotations.NonNull;
  * Exceptions to do with encryption.
  */
 public class EncryptionException extends RuntimeException {
+    /** The exception to be sent to the client. */
     @NonNull
     private final ApiException apiException;
 
     /**
-     * Constructs an exception using an {@see InvalidRecordException} so that it is considered fatal by Kafka clients
+     * Constructs an exception using an {@link InvalidRecordException} so that it is considered fatal by Kafka clients
      * @param message to be included in both the logs and the client response (where messages are included by the protocol)
      */
     public EncryptionException(String message) {
@@ -36,6 +37,10 @@ public class EncryptionException extends RuntimeException {
         this.apiException = apiException;
     }
 
+    /**
+     * Returns the exception to be sent to the client.
+     * @return the exception to be sent to the client.
+     */
     public ApiException getApiException() {
         return apiException;
     }

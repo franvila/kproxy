@@ -109,14 +109,18 @@ CompletableFuture.delayedExecutor(1, TimeUnit.SECONDS)
 
 ## Using Subject and Principals
 
+> **Deprecated:** `io.kroxylicious.proxy.authentication.{Subject,Principal,Unique}` are deprecated in favour of `io.kroxylicious.identity.{Subject,Principal,SingularPrincipal}` in the new, dependency-free `kroxylicious-identity-api` module — see [`../kroxylicious-identity-api/README.md`](../kroxylicious-identity-api/README.md).
+> The existing types remain fully functional until Kroxylicious 1.0, and `FilterContext.authenticatedSubject()` continues to return the existing `Subject` type until then, so no immediate action is required.
+> New code should prefer the `io.kroxylicious.identity` types where practical.
+
 **Subject composition rules you must follow:**
 - Non-anonymous subjects must have exactly one `User` principal
-- Use `@Unique` annotation on your custom principal types to enforce at-most-one constraint
+- Use `@SingularPrincipal` (or the deprecated `@Unique`) annotation on your custom principal types to enforce an at-most-one constraint
 
 **Pattern for extracting principals:**
 ```java
-Subject subject = context.getAuthenticatedSubject();
-Optional<User> user = subject.principals(User.class).findFirst();
+Subject subject = context.authenticatedSubject();
+Optional<User> user = subject.uniquePrincipalOfType(User.class);
 if (user.isPresent()) {
     String username = user.get().name();
     // ...
@@ -127,11 +131,6 @@ if (user.isPresent()) {
 ```java
 // Implement Principal interface
 public record MyPrincipal(String value) implements Principal {
-    @Override
-    public String type() {
-        return MyPrincipal.class.getName();
-    }
-
     @Override
     public String name() {
         return value;
@@ -164,7 +163,7 @@ The runtime provides these services via `FilterContext`:
 - Client address, session ID, connection information
 
 **Authentication state**:
-- `getAuthenticatedSubject()` - Authenticated client identity (may be anonymous)
+- `authenticatedSubject()` - Authenticated client identity (may be anonymous)
 
 ## Runtime Guarantees
 
@@ -237,6 +236,43 @@ if (response == null) {
 }
 return context.forwardResponse(response);
 ```
+
+## Router API
+
+### VirtualNode
+
+`VirtualNode` is an opaque reference type for node identity in the Router API. Routers obtain instances from `RouterContext` methods and pass them to `sendRequest()`. The type is intentionally opaque — routers must not inspect or construct instances directly.
+
+**Why opaque?** The integer-based port-per-broker networking model encodes route and target broker into a single int. An alternative networking model (where proxy instances act as brokers) needs richer routing information. `VirtualNode` hides this difference so routers work with either model unchanged.
+
+**Key methods on `RouterContext`:**
+- `virtualNode()` — the node the client connected to (empty for bootstrap)
+- `anyNode(route)` — an arbitrary node on a route (for discovery requests)
+- `nodeForId(int)` — converts a protocol integer (from METADATA, FIND_COORDINATOR responses) to a `VirtualNode`. This is the bridge between the Kafka wire protocol (integers) and the opaque API. Routers need this when interpreting node IDs in protocol response bodies — for example, when merging METADATA responses from multiple routes.
+- `sendRequest(node, header, request)` — sends to a specific node
+
+### TopologyService
+
+`TopologyService` is an opt-in topology cache for routers that need leader, coordinator, broker, or topic ID information. Routers obtain it from `RouterFactoryContext.topologyService()` during `RouterFactory.initialize()`. Routers that never call `topologyService()` pay no cost — no cache is created.
+
+**Cache population model:** The cache is populated as a **side effect** of METADATA responses flowing through the routing pipeline. When any request sent via `RouterContext.sendRequest()` produces a METADATA response, the runtime updates the topology cache before completing the router's `CompletionStage`. This means after a METADATA request's future completes, the cache is guaranteed to reflect that response.
+
+**Read-only queries (synchronous):**
+- `leaderOf(topicName, partitionIndex)` — cached partition leader
+- `coordinatorOf(route, keyType, key)` — cached coordinator
+- `partitionInfoFor(topicName, partitionIndex)` — leader + replicas + ISR (for follower-fetch)
+- `brokerInfo(node)` — host, port, rack (for AZ-aware routing)
+
+**Active methods (may send requests):**
+- `topicNames(Set<Uuid>)` — batched topic ID resolution
+- `ensureLeadersCached(Map<String, Set<String>>)` — batched leader cache warming
+- `discoverCoordinator(route, keyType, key)` — two-hop coordinator discovery (METADATA then FIND_COORDINATOR)
+
+**Invalidation:** `invalidateRoute(route)` performs coarse invalidation — clears all partition info, coordinators, and broker info for a route. Topic ID→name mappings are not cleared (they are stable within a cluster). The router calls this when it observes staleness indicators (e.g. `NOT_LEADER_OR_FOLLOWER`) in responses. No background refresh is fired — the client drives the refresh via its own METADATA request.
+
+**Why coarse invalidation?** A single `invalidateRoute()` replaces what would otherwise be `invalidateLeader()`, `invalidateCoordinator()`, `invalidateNode()`. Over-invalidation is acceptable because the cache is repopulated cheaply from the client's next METADATA request. This avoids an ever-growing set of invalidation methods as more cached entity types are added.
+
+**Why the router handles invalidation, not the runtime:** The runtime would need to deserialise an open-ended and growing set of response types to scan for error codes. Different error codes have different semantics. Routers that don't use the topology cache shouldn't pay the deserialisation cost.
 
 ## Cross-References
 

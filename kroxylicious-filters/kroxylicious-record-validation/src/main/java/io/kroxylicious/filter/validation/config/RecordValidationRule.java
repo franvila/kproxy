@@ -16,7 +16,7 @@ import edu.umd.cs.findbugs.annotations.Nullable;
 
 /**
  * Describes an optional key validation rule and an optional value validation rule which will
- * be applied to a {@link org.apache.kafka.common.record.Record} to validate its contents.
+ * be applied to a {@link io.kroxylicious.kafka.common.record.internal.Record} to validate its contents.
  */
 public class RecordValidationRule {
 
@@ -59,6 +59,9 @@ public class RecordValidationRule {
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass") // TopicMatchingRecordValidationRule extends this class and adds topicNames to equals(). Relaxing to
+    // instanceof would make base.equals(topicMatching) true while the reverse stays false, breaking the
+    // symmetry requirement of Object#equals.
     public boolean equals(Object o) {
         if (this == o) {
             return true;

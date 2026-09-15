@@ -6,11 +6,13 @@
 
 package io.kroxylicious.proxy.internal;
 
-import org.apache.kafka.common.protocol.ApiKeys;
+import java.util.Set;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
 import io.kroxylicious.proxy.internal.codec.DecodePredicate;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -81,10 +83,33 @@ class DelegatingDecodePredicateTest {
 
     @EnumSource(value = ApiKeys.class, mode = EnumSource.Mode.EXCLUDE, names = { "API_VERSIONS" })
     @ParameterizedTest
+    void testAllResponseKeysCanBeDeniedByDelegate(ApiKeys apiKeys) {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        assertPredicateDoesNotTargetResponseKey(apiKeys);
+    }
+
+    @EnumSource(value = ApiKeys.class, mode = EnumSource.Mode.EXCLUDE, names = { "API_VERSIONS" })
+    @ParameterizedTest
     void testAllKeysCanBeTargetedByDelegate(ApiKeys apiKeys) {
         givenPredicate();
         givenDelegateTargetsAll();
         assertPredicateTargetsRequestKey(apiKeys);
+    }
+
+    @EnumSource(value = ApiKeys.class, mode = EnumSource.Mode.EXCLUDE, names = { "API_VERSIONS" })
+    @ParameterizedTest
+    void testAllResponseKeysCanBeTargetedByDelegate(ApiKeys apiKeys) {
+        givenPredicate();
+        givenDelegateTargetsAll();
+        assertPredicateTargetsResponseKey(apiKeys);
+    }
+
+    @Test
+    void testApiVersionsResponseAlwaysDecoded_WhenDelegateTargetsNothing() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        assertPredicateTargetsResponseKey(ApiKeys.API_VERSIONS);
     }
 
     private void givenDelegateTargetsAll() {
@@ -111,7 +136,59 @@ class DelegatingDecodePredicateTest {
         assertFalse(predicate.shouldDecodeRequest(key, key.latestVersion()), "predicate unexpectedly targeted key " + key);
     }
 
+    @Test
+    void testRouterRequiresDecodingForcesDecodeForDynamicKeys() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        predicate.setRouterDecodingRequirements(Set.of(ApiKeys.FETCH));
+        assertPredicateTargetsRequestKey(ApiKeys.FETCH);
+    }
+
+    @Test
+    void testRouterRequiresDecodingDoesNotForceDecodeForStaticKeys() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        predicate.setRouterDecodingRequirements(Set.of(ApiKeys.FETCH));
+        assertPredicateDoesNotTargetRequestKey(ApiKeys.PRODUCE);
+    }
+
+    @Test
+    void testEmptyRouterRequirementsDoesNotForceDecoding() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        predicate.setRouterDecodingRequirements(Set.of());
+        assertPredicateDoesNotTargetRequestKey(ApiKeys.FETCH);
+    }
+
+    @Test
+    void testRouterRequiresDecodingForcesDecodeResponseForRequiredKey() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        predicate.setRouterDecodingRequirements(Set.of(ApiKeys.METADATA));
+        assertPredicateTargetsResponseKey(ApiKeys.METADATA);
+    }
+
+    @Test
+    void testRouterRequiresDecodingDoesNotForceDecodeResponseForOtherKeys() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        predicate.setRouterDecodingRequirements(Set.of(ApiKeys.METADATA));
+        assertPredicateDoesNotTargetResponseKey(ApiKeys.PRODUCE);
+    }
+
+    @Test
+    void testEmptyRouterRequirementsDoesNotForceResponseDecoding() {
+        givenPredicate();
+        givenDelegateTargetsNothing();
+        predicate.setRouterDecodingRequirements(Set.of());
+        assertPredicateDoesNotTargetResponseKey(ApiKeys.METADATA);
+    }
+
     private void assertPredicateTargetsResponseKey(ApiKeys key) {
         assertTrue(predicate.shouldDecodeResponse(key, key.latestVersion()), "predicate did not target key " + key);
+    }
+
+    private void assertPredicateDoesNotTargetResponseKey(ApiKeys key) {
+        assertFalse(predicate.shouldDecodeResponse(key, key.latestVersion()), "predicate unexpectedly targeted key " + key);
     }
 }

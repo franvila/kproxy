@@ -17,11 +17,18 @@ import java.util.Objects;
  * @param edek - edek bytes
  */
 public record FortanixDsmKmsEdek(String kekRef,
-                                 byte[] iv,
-                                 byte[] edek) {
+                                 @SuppressWarnings("ArrayRecordComponent") byte[] iv, // byte[] retained: deep equality via explicit equals/hashCode below; treated as immutable by convention
+                                 @SuppressWarnings("ArrayRecordComponent") byte[] edek) { // byte[] retained: deep equality via explicit equals/hashCode below; treated as immutable by convention
 
     public static final int IV_LENGTH = 16;
 
+    /**
+     * Validates the record components.
+     *
+     * @throws NullPointerException if any component is null.
+     * @throws IllegalArgumentException if {@code kekRef} or {@code edek} is empty, or if
+     * {@code iv} is not exactly {@value #IV_LENGTH} bytes long.
+     */
     public FortanixDsmKmsEdek {
         Objects.requireNonNull(kekRef);
         Objects.requireNonNull(iv);
@@ -47,10 +54,9 @@ public record FortanixDsmKmsEdek(String kekRef,
         if (this == o) {
             return true;
         }
-        if (o == null || getClass() != o.getClass()) {
+        if (!(o instanceof FortanixDsmKmsEdek that)) {
             return false;
         }
-        FortanixDsmKmsEdek that = (FortanixDsmKmsEdek) o;
         return Objects.equals(kekRef, that.kekRef) && Arrays.equals(iv, that.iv) && Arrays.equals(edek, that.edek);
     }
 
@@ -72,9 +78,9 @@ public record FortanixDsmKmsEdek(String kekRef,
     @Override
     public String toString() {
         return "FortanixDsmKmsEdek{" +
-                "keyRef=" + kekRef +
-                ", iv=" + Arrays.toString(iv) +
-                ", edek=" + Arrays.toString(edek) +
+                "kekRef=" + kekRef +
+                ", iv=<redacted>" +
+                ", edek=<redacted>" +
                 '}';
     }
 }

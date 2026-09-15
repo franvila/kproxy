@@ -7,11 +7,16 @@
 package io.kroxylicious.filter.encryption.config;
 
 /**
+ * Configuration for encryption buffer size limits.
  *
  * @param minSizeBytes the minimum size of the encryption buffer
  * @param maxSizeBytes the maximum size of the encryption buffer
  */
 public record EncryptionBufferConfig(int minSizeBytes, int maxSizeBytes) {
+    /**
+     * Creates an encryption buffer config.
+     * @throws IllegalArgumentException if either size is not positive, or the minimum exceeds the maximum.
+     */
     public EncryptionBufferConfig {
         if (minSizeBytes <= 0) {
             throw new IllegalArgumentException("minSizeBytes must be greater than zero");

@@ -14,12 +14,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
-import org.apache.kafka.common.message.ProduceRequestData;
-import org.apache.kafka.common.record.BaseRecords;
-import org.apache.kafka.common.record.MemoryRecords;
-import org.apache.kafka.common.record.Record;
-
 import io.kroxylicious.filter.validation.validators.record.RecordValidator;
+import io.kroxylicious.kafka.common.message.ProduceRequestData;
+import io.kroxylicious.kafka.common.record.internal.BaseRecords;
+import io.kroxylicious.kafka.common.record.internal.MemoryRecords;
+import io.kroxylicious.kafka.common.record.internal.Record;
 
 class PerRecordTopicValidator implements TopicValidator {
 
@@ -46,12 +45,12 @@ class PerRecordTopicValidator implements TopicValidator {
 
     private CompletionStage<PartitionValidationResult> validateTopicPartition(ProduceRequestData.PartitionProduceData partitionProduceData) {
         BaseRecords records = partitionProduceData.records();
-        if (!(records instanceof MemoryRecords)) {
+        if (!(records instanceof MemoryRecords memoryRecords)) {
             return CompletableFuture.completedFuture(new PartitionValidationResult(partitionProduceData.index(), List.of()));
         }
         int recordIndex = 0;
         CompletableFuture<List<RecordValidationFailure>> result = CompletableFuture.completedFuture(new ArrayList<>());
-        for (Record record : ((MemoryRecords) records).records()) {
+        for (Record record : memoryRecords.records()) {
             int finalRecordIndex = recordIndex;
             result = result.thenCompose(recordValidationFailures -> validator.validate(record).thenApply(result1 -> {
                 if (!result1.valid()) {

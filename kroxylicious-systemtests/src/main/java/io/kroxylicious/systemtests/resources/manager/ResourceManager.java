@@ -17,13 +17,13 @@ import org.slf4j.LoggerFactory;
 import io.fabric8.kubernetes.api.builder.Builder;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.client.http.StandardHttpClient;
-import io.skodjob.testframe.interfaces.ResourceType;
-import io.skodjob.testframe.resources.ConfigMapType;
-import io.skodjob.testframe.resources.CustomResourceDefinitionType;
-import io.skodjob.testframe.resources.DeploymentType;
-import io.skodjob.testframe.resources.KubeResourceManager;
-import io.skodjob.testframe.resources.SecretType;
-import io.skodjob.testframe.resources.ServiceType;
+import io.skodjob.kubetest4j.interfaces.ResourceType;
+import io.skodjob.kubetest4j.resources.ConfigMapType;
+import io.skodjob.kubetest4j.resources.CustomResourceDefinitionType;
+import io.skodjob.kubetest4j.resources.DeploymentType;
+import io.skodjob.kubetest4j.resources.KubeResourceManager;
+import io.skodjob.kubetest4j.resources.SecretType;
+import io.skodjob.kubetest4j.resources.ServiceType;
 
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProtocolFilter;
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaProxy;
@@ -41,6 +41,7 @@ import io.kroxylicious.systemtests.resources.strimzi.KafkaType;
  */
 public class ResourceManager {
     private static final Logger LOGGER = LoggerFactory.getLogger(ResourceManager.class);
+    private static final Object SINGLETON_LOCK = new Object();
 
     private static ResourceManager instance;
 
@@ -84,12 +85,14 @@ public class ResourceManager {
      *
      * @return the instance
      */
-    public static synchronized ResourceManager getInstance() {
-        if (instance == null) {
-            instance = new ResourceManager();
-            KubeResourceManager.get().setResourceTypes(resourceTypes);
+    public static ResourceManager getInstance() {
+        synchronized (SINGLETON_LOCK) {
+            if (instance == null) {
+                instance = new ResourceManager();
+                KubeResourceManager.get().setResourceTypes(resourceTypes);
+            }
+            return instance;
         }
-        return instance;
     }
 
     /**

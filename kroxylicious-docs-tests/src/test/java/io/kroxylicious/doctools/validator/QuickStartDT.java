@@ -9,6 +9,7 @@ package io.kroxylicious.doctools.validator;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.UncheckedIOException;
@@ -25,6 +26,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Predicate;
 
 import org.asciidoctor.Attributes;
@@ -34,6 +36,8 @@ import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.kroxylicious.doctools.asciidoc.Block;
 import io.kroxylicious.doctools.asciidoc.BlockExtractor;
@@ -49,47 +53,78 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SuppressWarnings("java:S3577") // ignoring naming convention for the test class
 class QuickStartDT {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(QuickStartDT.class);
     private static final FileAttribute<Set<PosixFilePermission>> OWNER_RWX = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"));
 
     private static List<Arguments> quickStarts() {
-        try (var blockExtractor = new BlockExtractor()) {
+        Assertions.assertThat(Utils.OPERATOR_ZIP).exists();
+        Assertions.assertThat(Utils.PROXY_IMAGE_TARBALL).exists();
+        Assertions.assertThat(Utils.OPERATOR_IMAGE_TARBALL).exists();
 
-            Assertions.assertThat(Utils.OPERATOR_ZIP).exists();
+        var attributes = Attributes.builder()
+                .attribute("OperatorAssetZipLink", pathToFileUrl(Utils.OPERATOR_ZIP))
+                .build();
 
-            // Some quick starts rely on the {OperatorAssetZipLink} variable
-            blockExtractor.withAttributes(Attributes.builder()
-                    .attribute("OperatorAssetZipLink", pathToFileUrl(Utils.OPERATOR_ZIP))
-                    .build());
-
-            var recordEncryptionQuickstart = Utils.DOCS_ROOTDIR.resolve("record-encryption-quick-start").resolve("index.adoc");
-            var quickStarts = List.of(new Quickstart("record-encryption-quick-start(vault)", recordEncryptionQuickstart, blockIsInvariantOrMatches("kms", "vault")),
-                    new Quickstart("record-encryption-quick-start(localstack)", recordEncryptionQuickstart, blockIsInvariantOrMatches("kms", "localstack")));
-            return quickStarts.stream().map(q -> extractCodeBlocks(blockExtractor, q)).toList();
-        }
+        var recordEncryptionQuickstart = Utils.DOCS_ROOTDIR.resolve("record-encryption-quick-start").resolve("index.adoc");
+        var quickStarts = List.of(new Quickstart("record-encryption-quick-start(vault)", recordEncryptionQuickstart, blockIsInvariantOrMatches("kms", "vault")),
+                new Quickstart("record-encryption-quick-start(localstack)", recordEncryptionQuickstart, blockIsInvariantOrMatches("kms", "localstack")));
+        return quickStarts.stream().map(q -> extractCodeBlocks(q, attributes)).toList();
     }
 
     @ParameterizedTest
     @MethodSource("quickStarts")
     void quickStart(List<Block> shellBlocks) {
-        // Given
-        Path shellScript = writeShellScript(shellBlocks);
-
-        // When
-        var actual = executeScript(shellScript);
-
-        // Then
+        // One throw-away Minikube profile per @ParameterizedTest invocation (i.e. per KMS variant),
+        // seeded with the locally built images. The quick start's
+        // `export MINIKUBE_PROFILE=${MINIKUBE_PROFILE:-quickstart-${RANDOM}}` line reuses this value.
+        var profile = "quickstart-" + ThreadLocalRandom.current().nextInt(100_000);
         try {
-            assertThat(actual)
-                    .succeedsWithin(Duration.ofMinutes(10))
-                    .satisfies(er -> assertThat(er.exitValue())
-                            .withFailMessage("Script failed - %s", er)
-                            .isZero());
-        }
-        finally {
-            if (!actual.isDone()) {
-                actual.cancel(true);
+            ShellUtils.exec("minikube", "start", "-p", profile);
+            loadImage(profile, Utils.PROXY_IMAGE_TARBALL, "kroxylicious/proxy");
+            loadImage(profile, Utils.OPERATOR_IMAGE_TARBALL, "kroxylicious/operator");
+
+            // Check 2: the quick start's kubectl commands follow the *active* context, not MINIKUBE_PROFILE.
+            // If it is not our profile, the operator lands in a cluster without the images.
+            boolean contextOk = ShellUtils.execValidate(lines -> lines.anyMatch(l -> l.trim().equals(profile)), lines -> true,
+                    "kubectl", "config", "current-context");
+            if (!contextOk) {
+                throw new AssertionError("active kube-context is not '" + profile + "' before running the quick start (issue #4404)");
+            }
+            LOGGER.atInfo().addKeyValue("profile", profile).log("Quick start: kube-context confirmed, running shell script");
+
+            var actual = executeScript(writeShellScript(shellBlocks), profile);
+            try {
+                assertThat(actual)
+                        .succeedsWithin(Duration.ofMinutes(10))
+                        .satisfies(er -> assertThat(er.exitValue())
+                                .withFailMessage("Script failed - %s", er)
+                                .isZero());
+            }
+            finally {
+                if (!actual.isDone()) {
+                    actual.cancel(true);
+                }
             }
         }
+        finally {
+            try {
+                ShellUtils.exec("minikube", "delete", "-p", profile);
+            }
+            catch (RuntimeException | AssertionError e) {
+                // The quick start's own "minikube delete" cleanup step may already have removed it.
+                LOGGER.atWarn().addKeyValue("profile", profile).setCause(e).log("Minikube profile cleanup failed");
+            }
+        }
+    }
+
+    /**
+     * Loads a container-image tarball into {@code profile}. Delegates to {@code scripts/minikube-image-load.sh},
+     * which fails (unlike a bare {@code minikube image load} — kubernetes/minikube#23471) if the load errored
+     * or if {@code expectedRepo} (e.g. {@code kroxylicious/operator}) is not listed afterwards.
+     */
+    private static void loadImage(String profile, Path tarball, String expectedRepo) {
+        ShellUtils.exec(Utils.SCRIPTS_DIR.resolve("minikube-image-load.sh").toString(), "--profile", profile, tarball.toString(), expectedRepo);
+        LOGGER.atInfo().addKeyValue("profile", profile).addKeyValue("image", expectedRepo).log("Image loaded into Minikube profile");
     }
 
     private static String pathToFileUrl(Path path) {
@@ -108,10 +143,13 @@ class QuickStartDT {
         };
     }
 
-    private static Arguments extractCodeBlocks(BlockExtractor extractor, Quickstart qs) {
-        var pred = isShellBlock().and(qs.selector());
-        var cmds = extractor.extract(qs.path(), pred);
-        return Arguments.argumentSet(qs.name(), cmds);
+    private static Arguments extractCodeBlocks(Quickstart qs, Attributes attributes) {
+        try (var extractor = new BlockExtractor()) {
+            extractor.withAttributes(attributes);
+            var pred = isShellBlock().and(qs.selector());
+            var cmds = extractor.extract(qs.path(), pred);
+            return Arguments.argumentSet(qs.name(), cmds);
+        }
     }
 
     private static Predicate<StructuralNode> isShellBlock() {
@@ -119,33 +157,31 @@ class QuickStartDT {
                 Objects.equals(sn.getAttribute("language", null), "terminal");
     }
 
-    private CompletableFuture<ExecutionResult> executeScript(Path shellScript) {
+    private CompletableFuture<ExecutionResult> executeScript(Path shellScript, String minikubeProfile) {
         return CompletableFuture.supplyAsync(() -> {
             var builder = new ProcessBuilder(shellScript.toAbsolutePath().toString());
+            builder.environment().put("MINIKUBE_PROFILE", minikubeProfile);
 
-            var stdoutExecutor = Executors.newSingleThreadExecutor();
-            var stderrExecutor = Executors.newSingleThreadExecutor();
-            try {
+            try (var stdoutExecutor = Executors.newSingleThreadExecutor();
+                    var stderrExecutor = Executors.newSingleThreadExecutor()) {
                 var p = builder.start();
-                return awaitScript(p, CompletableFuture.supplyAsync(() -> streamToString(p.getInputStream()), stdoutExecutor),
-                        CompletableFuture.supplyAsync(() -> streamToString(p.getErrorStream()), stderrExecutor));
+                return awaitScript(p, CompletableFuture.runAsync(() -> streamAndLog(p.getInputStream(), "stdout"), stdoutExecutor),
+                        CompletableFuture.runAsync(() -> streamAndLog(p.getErrorStream(), "stderr"), stderrExecutor));
             }
             catch (IOException e) {
                 throw new UncheckedIOException("Failed to run script containing quick start commands: %s".formatted(shellScript), e);
             }
-            finally {
-                stdoutExecutor.shutdown();
-                stderrExecutor.shutdown();
-            }
         });
     }
 
-    private static ExecutionResult awaitScript(Process p, CompletableFuture<String> readOutput, CompletableFuture<String> readStderr) {
+    private static ExecutionResult awaitScript(Process p, CompletableFuture<Void> readOutput, CompletableFuture<Void> readStderr) {
         try {
             try {
                 p.getOutputStream().close();
                 p.waitFor();
-                return new ExecutionResult(p.exitValue(), readOutput.join(), readStderr.join(), null);
+                readOutput.join();
+                readStderr.join();
+                return new ExecutionResult(p.exitValue(), null);
             }
             finally {
                 p.destroy();
@@ -155,13 +191,22 @@ class QuickStartDT {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            return new ExecutionResult(-1, readOutput.join(), readStderr.join(), e);
+            readOutput.join();
+            readStderr.join();
+            return new ExecutionResult(-1, e);
         }
     }
 
-    private static String streamToString(InputStream inputStream) {
-        try {
-            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+    private static void streamAndLog(InputStream inputStream, String streamName) {
+        try (var reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.isEmpty()) {
+                    LOGGER.atInfo()
+                            .addKeyValue("stream", streamName)
+                            .log(line);
+                }
+            }
         }
         catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -174,14 +219,11 @@ class QuickStartDT {
             try (var writer = new PrintWriter(Files.newBufferedWriter(tempFile, StandardCharsets.UTF_8))) {
                 writer.println("#!/usr/bin/env bash");
                 writer.println("set -e -v -o pipefail");
-                if (System.getenv("KROXYLICIOUS_QUICKSTART_DEBUG") != null) {
-                    writer.println("set -x");
-                }
                 shellBlocks.forEach(block -> {
                     try (var reader = new BufferedReader(new StringReader(block.content()))) {
                         writer.println("""
                                 echo "##############"
-                                echo "Code block source: %s (line %s), started ${SECONDS}"
+                                echo "Executing script block from %s:%d"
                                 """.formatted(block.asciiDocFile(), block.lineNumber()));
                         String line;
                         while ((line = reader.readLine()) != null) {
@@ -206,8 +248,8 @@ class QuickStartDT {
     record Quickstart(String name, Path path, Predicate<StructuralNode> selector) {}
 
     public static boolean isEnvironmentValid() {
-        return ShellUtils.validateToolsOnPath("minikube") && ShellUtils.validateKubeContext("minikube");
+        return ShellUtils.validateToolsOnPath("minikube");
     }
 
-    private record ExecutionResult(int exitValue, String stdout, String stderr, Exception e) {}
+    private record ExecutionResult(int exitValue, Exception e) {}
 }

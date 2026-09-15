@@ -41,6 +41,7 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.coordinator.group.GroupConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.parallel.ResourceLock;
 
 import io.kroxylicious.proxy.config.ConfigurationBuilder;
 import io.kroxylicious.proxy.config.VirtualClusterBuilder;
@@ -61,12 +62,14 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.DEFAULT_GATEWAY_NAME;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.DEFAULT_VIRTUAL_CLUSTER;
+import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.baseConfigurationBuilder;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.defaultPortIdentifiesNodeGatewayBuilder;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.proxy;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousTesters.kroxyliciousTester;
 import static io.kroxylicious.testing.integration.tester.KroxyliciousTesters.mockKafkaKroxyliciousTester;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -260,9 +263,13 @@ class KroxyliciousTestersTest {
         }
     }
 
+    @ResourceLock("localhost:9192")
     @Test
     void testRestartingProxyDoesNotCloseClients(@Name("underlyingCluster") Topic topic) throws Exception {
-        try (var tester = kroxyliciousTester(proxy(kafkaCluster))) {
+        // Given — use a fixed port so broker node ports are deterministic across restarts
+        var fixedPortConfig = addVirtualCluster(kafkaCluster.getBootstrapServers(),
+                baseConfigurationBuilder(), DEFAULT_VIRTUAL_CLUSTER, "localhost:9192");
+        try (var tester = kroxyliciousTester(fixedPortConfig)) {
             var admin = tester.admin();
             var producer = tester.producer();
             var consumer = tester.consumer();
@@ -270,8 +277,11 @@ class KroxyliciousTestersTest {
             send(producer, topic.name());
             consumer.subscribe(List.of(topic.name()));
             assertThat(consumer.poll(Duration.ofSeconds(10))).isNotNull();
+
+            // When
             tester.restartProxy();
-            // assert some basic things here but if restarting the proxy restarted the clients these would except
+
+            // Then
             assertThat(admin.describeCluster()).isNotNull();
             send(producer, topic.name());
             assertThat(consumer.poll(Duration.ofSeconds(10))).isNotNull();
@@ -444,8 +454,15 @@ class KroxyliciousTestersTest {
 
     private static void assertOneRecordConsumedFrom(ShareConsumer<String, String> consumer, String topicName) {
         consumer.subscribe(List.of(topicName));
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
-        assertEquals(1, records.count());
+        // Share group initialisation on the broker (coordinator readiness, creation of the
+        // __share_group_state internal topic) and redelivery of a record released by a previously
+        // closed consumer can exceed a single poll, so keep polling until the record arrives.
+        await().alias("await until the share consumer receives the record")
+                .atMost(Duration.ofSeconds(60))
+                .untilAsserted(() -> {
+                    ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+                    assertEquals(1, records.count());
+                });
     }
 
     private <T> void assertClientIsInstanceOf(Class<? extends T> expectedClass, Supplier<? extends T> clientSupplier) {

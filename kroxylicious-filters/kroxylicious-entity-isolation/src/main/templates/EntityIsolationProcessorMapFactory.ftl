@@ -35,14 +35,14 @@ import io.kroxylicious.filter.entityisolation.EntityIsolation.EntityType;
 <#list inputSpecs>
     <#items as apiSpec>
         <#if !apiSpec.hasAtLeastOneEntityField(filteredEntityTypes) && !apiSpec.hasResourceList>
-import org.apache.kafka.common.message.${apiSpec.response.dataClassName};
-import org.apache.kafka.common.message.${apiSpec.request.dataClassName};
+import io.kroxylicious.kafka.common.message.${apiSpec.response.dataClassName};
+import io.kroxylicious.kafka.common.message.${apiSpec.request.dataClassName};
         </#if>
     </#items>
 </#list>
 
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 
 /**
 * Entity isolation processor map factory.
@@ -60,9 +60,9 @@ final class EntityIsolationProcessorMapFactory  {
 <#list inputSpecs>
     <#items as apiSpec>
         <#if apiSpec.hasAtLeastOneEntityField(filteredEntityTypes) || apiSpec.hasResourceList>
-        map.put(ApiKeys.${apiSpec.apiKey}, new ${apiSpec.name}EntityIsolationProcessor(shouldMap, entityNameMapper));
+        map.put(ApiKeys.${apiSpec.kafkaApiKeyEnumName}, new ${apiSpec.name}EntityIsolationProcessor(shouldMap, entityNameMapper));
         <#else>
-        map.put(ApiKeys.${apiSpec.apiKey}, new PassthroughEntityIsolationProcessor<${apiSpec.request.dataClassName}, ${apiSpec.response.dataClassName}>((short) ${apiSpec.request.validVersions.lowest}, (short) ${apiSpec.request.validVersions.highest}));
+        map.put(ApiKeys.${apiSpec.kafkaApiKeyEnumName}, new PassthroughEntityIsolationProcessor<${apiSpec.request.dataClassName}, ${apiSpec.response.dataClassName}>((short) ${apiSpec.request.validVersions.lowest}, (short) ${apiSpec.request.validVersions.highest}));
         </#if>
     </#items>
 </#list>

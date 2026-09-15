@@ -37,11 +37,11 @@ import io.kroxylicious.proxy.internal.codec.CorrelationManager;
 import io.kroxylicious.proxy.internal.codec.KafkaRequestEncoder;
 import io.kroxylicious.proxy.internal.codec.KafkaResponseDecoder;
 import io.kroxylicious.proxy.internal.metrics.MetricEmittingKafkaMessageListener;
+import io.kroxylicious.proxy.internal.routing.UpstreamClusterModel;
 import io.kroxylicious.proxy.internal.tls.ServerTlsCredentialSupplierContextImpl;
 import io.kroxylicious.proxy.internal.tls.TlsCredentialsImpl;
 import io.kroxylicious.proxy.internal.util.ActivationToken;
 import io.kroxylicious.proxy.internal.util.Metrics;
-import io.kroxylicious.proxy.internal.util.VirtualClusterNode;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
 import io.kroxylicious.proxy.service.HostPort;
 import io.kroxylicious.proxy.tag.VisibleForTesting;
@@ -59,6 +59,14 @@ import static org.slf4j.LoggerFactory.getLogger;
  * Extracted from {@link ClientConnectionStateMachine} to separate server-side connection
  * concerns from the client session. The CCSM retains client-side state and delegates
  * server operations here.
+ *
+ * <p>This class participates in TCP backpressure in both directions. When either side of the proxy
+ * starts applying back pressure the proxy should propagate that fact to the other peer.
+ * Concretely this means:</p>
+ * <ul>
+ *   <li>When the server channel becomes unwritable, client reads are paused (don't accept requests we can't forward).</li>
+ *   <li>When the client channel becomes unwritable, server reads are paused (don't accept responses we can't deliver).</li>
+ * </ul>
  *
  * <pre>
  *     Connecting ──→ Active ────────────→ Closed
@@ -78,13 +86,27 @@ class ServerConnectionStateMachine {
     private final String clusterName;
     @Nullable
     private final Integer nodeId;
+    private final UpstreamClusterModel upstreamClusterModel;
 
+    @VisibleForTesting
     int serverMessagesInFlightCount;
 
-    private boolean serverReadsBlocked;
+    int serverMessagesInFlightCount() {
+        return serverMessagesInFlightCount;
+    }
 
-    @Nullable
     @VisibleForTesting
+    boolean serverReadsBlocked;
+
+    /**
+     * Tracks whether the server channel is writable.
+     * When false, client reads are paused to apply backpressure.
+     */
+    @VisibleForTesting
+    boolean serverChannelWritable = true;
+
+    @VisibleForTesting
+    @Nullable
     Timer.Sample serverBackpressureTimer;
 
     @Nullable
@@ -95,24 +117,29 @@ class ServerConnectionStateMachine {
     private final Timer serverToProxyBackpressureMeter;
     private final ActivationToken proxyToServerConnectionToken;
 
+    @SuppressWarnings("java:S107")
     ServerConnectionStateMachine(
                                  HostPort remote,
                                  ClientConnectionStateMachine ccsm,
                                  VirtualClusterModel virtualCluster,
                                  String clusterName,
-                                 @Nullable Integer nodeId) {
+                                 @Nullable Integer nodeId,
+                                 Counter proxyToServerConnectionCounter,
+                                 Counter proxyToServerErrorCounter,
+                                 Timer serverToProxyBackpressureMeter,
+                                 ActivationToken proxyToServerConnectionToken,
+                                 UpstreamClusterModel upstreamClusterModel) {
         this.state = new ServerConnectionState.Connecting(remote);
         this.virtualCluster = Objects.requireNonNull(virtualCluster);
         this.clusterName = Objects.requireNonNull(clusterName);
         this.nodeId = nodeId;
         this.ccsm = Objects.requireNonNull(ccsm);
         this.backendHandler = new KafkaProxyBackendHandler(this);
-
-        var node = new VirtualClusterNode(clusterName, nodeId);
-        this.proxyToServerConnectionCounter = Metrics.proxyToServerConnectionCounter(clusterName, nodeId).withTags();
-        this.proxyToServerErrorCounter = Metrics.proxyToServerErrorCounter(clusterName, nodeId).withTags();
-        this.serverToProxyBackpressureMeter = Metrics.serverToProxyBackpressureTimer(clusterName, nodeId).withTags();
-        this.proxyToServerConnectionToken = Metrics.proxyToServerConnectionToken(node);
+        this.proxyToServerConnectionCounter = proxyToServerConnectionCounter;
+        this.proxyToServerErrorCounter = proxyToServerErrorCounter;
+        this.serverToProxyBackpressureMeter = serverToProxyBackpressureMeter;
+        this.proxyToServerConnectionToken = proxyToServerConnectionToken;
+        this.upstreamClusterModel = Objects.requireNonNull(upstreamClusterModel);
     }
 
     ServerConnectionState state() {
@@ -124,7 +151,7 @@ class ServerConnectionStateMachine {
     }
 
     boolean isUpstreamTls() {
-        return virtualCluster.getUpstreamSslContext().isPresent();
+        return upstreamClusterModel.requiresTls();
     }
 
     /**
@@ -167,11 +194,11 @@ class ServerConnectionStateMachine {
                     new LoggingHandler("io.kroxylicious.proxy.internal.UpstreamNetworkLogger", LogLevel.INFO));
         }
 
-        if (virtualCluster.usesDynamicTlsCredentials()) {
+        if (upstreamClusterModel.tlsManager().isConfigured()) {
             invokeTlsCredentialSupplier(remote, outboundChannel, pipeline);
         }
         else {
-            virtualCluster.getUpstreamSslContext().ifPresent(sslContext -> {
+            upstreamClusterModel.upstreamSslContext().ifPresent(sslContext -> {
                 final SslHandler handler = sslContext.newHandler(outboundChannel.alloc(), remote.host(), remote.port());
                 pipeline.addFirst("ssl", handler);
             });
@@ -218,8 +245,7 @@ class ServerConnectionStateMachine {
                                              Channel outboundChannel,
                                              ChannelPipeline pipeline) {
         try {
-            var manager = virtualCluster.getTlsCredentialSupplierManager();
-            ServerTlsCredentialSupplier supplier = manager.getSupplier();
+            ServerTlsCredentialSupplier supplier = upstreamClusterModel.tlsManager().getSupplier();
 
             ClientTlsContext clientCtx = ccsm.clientTlsContext().orElse(null);
             var supplierContext = new ServerTlsCredentialSupplierContextImpl(clientCtx);
@@ -296,7 +322,7 @@ class ServerConnectionStateMachine {
             SslContextBuilder sslContextBuilder = SslContextBuilder.forClient()
                     .keyManager(credentialsImpl.privateKey(), credentialsImpl.certificateChain());
 
-            virtualCluster.targetCluster().tls().ifPresent(tls -> {
+            upstreamClusterModel.tls().ifPresent(tls -> {
                 VirtualClusterModel.configureCipherSuites(sslContextBuilder, tls);
                 VirtualClusterModel.configureEnabledProtocols(sslContextBuilder, tls);
                 Optional.ofNullable(tls.trust())
@@ -385,10 +411,12 @@ class ServerConnectionStateMachine {
     }
 
     void onServerUnwritable() {
+        serverChannelWritable = false;
         ccsm.onServerUnwritable();
     }
 
     void onServerWritable() {
+        serverChannelWritable = true;
         ccsm.onServerWritable();
     }
 
@@ -433,6 +461,10 @@ class ServerConnectionStateMachine {
             }
             backendHandler.relieveBackpressure();
         }
+    }
+
+    boolean isWritable() {
+        return serverChannelWritable;
     }
 
     void close() {
@@ -482,6 +514,7 @@ class ServerConnectionStateMachine {
         return "ServerConnectionStateMachine{" +
                 "state=" + state +
                 ", serverReadsBlocked=" + serverReadsBlocked +
+                ", serverChannelWritable=" + serverChannelWritable +
                 ", serverMessagesInFlightCount=" + serverMessagesInFlightCount +
                 '}';
     }

@@ -30,13 +30,20 @@ public class DekManager<K, E> {
     private final Kms<K, E> kms;
     private final long maxEncryptionsPerDek;
 
+    /**
+     * Creates a DEK manager.
+     * @param kms the KMS from which DEKs are generated and with which encrypted DEKs are decrypted.
+     * @param maxEncryptionsPerDek the maximum number of encryption operations allowed per generated DEK.
+     */
     public DekManager(Kms<K, E> kms, long maxEncryptionsPerDek) {
         this.kms = kms;
         this.maxEncryptionsPerDek = maxEncryptionsPerDek;
     }
 
     /**
-     * @return The KMS's serde for encrypted DEKs
+     * Returns the KMS's serde for encrypted DEKs.
+     *
+     * @return the KMS's serde for encrypted DEKs.
      * @see Kms#edekSerde()
      */
     public Serde<E> edekSerde() {
@@ -44,10 +51,10 @@ public class DekManager<K, E> {
     }
 
     /**
-     * Result a key alias
+     * Resolve a key alias
      * @see Kms#resolveAlias(String)
-     * @param alias
-     * @return
+     * @param alias The alias to resolve.
+     * @return A completion stage that completes with the key id for the given alias, or fails if the alias cannot be resolved.
      */
     public CompletionStage<K> resolveAlias(String alias) {
         return kms.resolveAlias(alias);

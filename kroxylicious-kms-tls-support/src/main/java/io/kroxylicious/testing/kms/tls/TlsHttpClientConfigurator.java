@@ -7,10 +7,15 @@
 package io.kroxylicious.testing.kms.tls;
 
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.net.http.HttpClient;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.KeyStore;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.Optional;
@@ -25,7 +30,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509TrustManager;
+import javax.net.ssl.X509ExtendedTrustManager;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +72,7 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
         }
     }
 
-    private static final X509TrustManager INSECURE_TRUST_MANAGER = new InsecureTrustManager();
+    private static final X509ExtendedTrustManager INSECURE_TRUST_MANAGER = new InsecureTrustManager();
 
     private static final TrustManager[] INSECURE_TRUST_MANAGERS = { INSECURE_TRUST_MANAGER };
     @Nullable
@@ -79,9 +84,6 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
      * @param tls tls parameters
      */
     public TlsHttpClientConfigurator(@Nullable Tls tls) {
-        if (tls != null && tls.key() != null) {
-            LOGGER.warn("TLS key material is currently not supported by this client");
-        }
         this.tls = tls;
     }
 
@@ -111,21 +113,49 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
         }
     }
 
-    private SSLParameters sslParameters() {
-        var defaultSslParameters = PLATFORM_SSL_CONTEXT.getDefaultSSLParameters();
-        if (tls == null || (tls.protocols() == null && tls.cipherSuites() == null)) {
-            return defaultSslParameters;
+    private SSLParameters sslParameters(SSLContext context) {
+        var copy = context.getDefaultSSLParameters();
+
+        // Disable hostname verification if using insecure TLS
+        if (isInsecureTls()) {
+            copy.setEndpointIdentificationAlgorithm(null);
         }
 
-        var supportedSSLParameters = PLATFORM_SSL_CONTEXT.getSupportedSSLParameters();
+        if (tls == null || (tls.protocols() == null && tls.cipherSuites() == null)) {
+            return copy;
+        }
 
-        var protocols = applyRestriction("protocol", tls.protocols(), defaultSslParameters, supportedSSLParameters, SSLParameters::getProtocols);
-        var cipherSuites = applyRestriction("cipher suite", tls.cipherSuites(), defaultSslParameters, supportedSSLParameters, SSLParameters::getCipherSuites);
+        var supportedSSLParameters = context.getSupportedSSLParameters();
 
-        defaultSslParameters.setProtocols(protocols);
-        defaultSslParameters.setCipherSuites(cipherSuites);
+        var protocols = applyRestriction("protocol", tls.protocols(), copy, supportedSSLParameters, SSLParameters::getProtocols);
+        var cipherSuites = applyRestriction("cipher suite", tls.cipherSuites(), copy, supportedSSLParameters, SSLParameters::getCipherSuites);
 
-        return defaultSslParameters;
+        copy.setProtocols(protocols);
+        copy.setCipherSuites(cipherSuites);
+
+        return copy;
+    }
+
+    private boolean isInsecureTls() {
+        if (tls == null || tls.trust() == null) {
+            return false;
+        }
+        return tls.trust().accept(new TrustProviderVisitor<>() {
+            @Override
+            public Boolean visit(TrustStore trustStore) {
+                return false;
+            }
+
+            @Override
+            public Boolean visit(InsecureTls insecureTls) {
+                return insecureTls.insecure();
+            }
+
+            @Override
+            public Boolean visit(PlatformTrustProvider platformTrustProvider) {
+                return false;
+            }
+        });
     }
 
     @NonNull
@@ -174,9 +204,37 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
     @VisibleForTesting
     static KeyManager[] getKeyManagers(KeyProvider key) {
         return key.accept(new KeyProviderVisitor<>() {
+            @SuppressFBWarnings({ "PATH_TRAVERSAL_IN", "HARD_CODE_PASSWORD" })
             @Override
             public KeyManager[] visit(KeyPair keyPair) {
-                throw new SslConfigurationException("KeyPair is not supported by this client");
+                try {
+                    // Read private key and certificate from PEM files
+                    byte[] keyBytes = Files.readAllBytes(Paths.get(keyPair.privateKeyFile()));
+                    byte[] certBytes = Files.readAllBytes(Paths.get(keyPair.certificateFile()));
+
+                    char[] keypassword = keyPair.keyPasswordProvider() != null
+                            ? keyPair.keyPasswordProvider().getProvidedPassword().toCharArray()
+                            : null;
+                    PrivateKey privateKey = PemUtils.parsePrivateKey(keyBytes, keypassword);
+                    X509Certificate[] certs = PemUtils.parseCertificateChain(certBytes);
+
+                    // Create in-memory KeyStore
+                    KeyStore ks = KeyStore.getInstance("JKS");
+                    ks.load(null, null);
+                    // Use empty password for both store and key entry for in-memory keystore
+                    char[] storePassword = "".toCharArray();
+                    ks.setKeyEntry("key", privateKey, storePassword, certs);
+
+                    KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                    kmf.init(ks, storePassword);
+                    return kmf.getKeyManagers();
+                }
+                catch (IOException e) {
+                    throw new SslConfigurationException("Failed to read PEM key material from " + keyPair.certificateFile() + " or " + keyPair.privateKeyFile(), e);
+                }
+                catch (Exception e) {
+                    throw new SslConfigurationException("Failed to load PEM key material", e);
+                }
             }
 
             @SuppressFBWarnings("PATH_TRAVERSAL_IN")
@@ -203,6 +261,7 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
             }
 
             @Nullable
+            @SuppressFBWarnings(value = "HARD_CODE_PASSWORD", justification = "Password comes from PasswordProvider, not hardcoded. False positive from String.toCharArray() call.")
             private static char[] passwordOrNull(PasswordProvider value) {
                 return Optional.ofNullable(value).map(PasswordProvider::getProvidedPassword).map(String::toCharArray).orElse(null);
             }
@@ -211,53 +270,74 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
 
     @VisibleForTesting
     static TrustManager[] getTrustManagers(TrustProvider trust) {
-
         return trust.accept(new TrustProviderVisitor<>() {
             @SuppressFBWarnings("PATH_TRAVERSAL_IN")
             @Override
             public TrustManager[] visit(TrustStore trustStore) {
-                if (trustStore.isPemType()) {
-                    throw new SslConfigurationException("PEM trust not supported by vault yet");
-                }
-                try {
-                    KeyStore instance = KeyStore.getInstance(trustStore.getType());
-                    char[] charArray = trustStore.storePasswordProvider() != null ? trustStore.storePasswordProvider().getProvidedPassword().toCharArray() : null;
-                    instance.load(new FileInputStream(trustStore.storeFile()), charArray);
-                    TrustManagerFactory managerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                    managerFactory.init(instance);
-                    return managerFactory.getTrustManagers();
-                }
-                catch (Exception e) {
-                    throw new SslConfigurationException(e);
-                }
+                return trustStore.isPemType() ? loadPemTrustStore(trustStore) : loadJksTrustStore(trustStore);
             }
 
             @Override
             public TrustManager[] visit(InsecureTls insecureTls) {
-                if (insecureTls.insecure()) {
-                    return INSECURE_TRUST_MANAGERS;
-                }
-                else {
-                    return getDefaultTrustManagers();
-                }
+                return insecureTls.insecure() ? INSECURE_TRUST_MANAGERS : getDefaultTrustManagers();
             }
 
             @Override
             public TrustManager[] visit(PlatformTrustProvider platformTrustProviderTls) {
                 return getDefaultTrustManagers();
             }
-
-            private static TrustManager[] getDefaultTrustManagers() {
-                try {
-                    TrustManagerFactory factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-                    factory.init((KeyStore) null);
-                    return factory.getTrustManagers();
-                }
-                catch (Exception e) {
-                    throw new SslConfigurationException(e);
-                }
-            }
         });
+    }
+
+    @SuppressFBWarnings("PATH_TRAVERSAL_IN")
+    private static TrustManager[] loadPemTrustStore(TrustStore trustStore) {
+        try {
+            byte[] pemBytes = Files.readAllBytes(Paths.get(trustStore.storeFile()));
+            X509Certificate[] certs = PemUtils.parseCertificateChain(pemBytes);
+
+            // Create in-memory KeyStore from PEM certificates
+            KeyStore ks = KeyStore.getInstance("JKS");
+            ks.load(null, null);
+            for (int i = 0; i < certs.length; i++) {
+                ks.setCertificateEntry("cert-" + i, certs[i]);
+            }
+
+            TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init(ks);
+            return tmf.getTrustManagers();
+        }
+        catch (IOException e) {
+            throw new SslConfigurationException("Failed to read PEM trust store from " + trustStore.storeFile(), e);
+        }
+        catch (Exception e) {
+            throw new SslConfigurationException("Failed to load PEM trust store", e);
+        }
+    }
+
+    @SuppressFBWarnings("PATH_TRAVERSAL_IN")
+    private static TrustManager[] loadJksTrustStore(TrustStore trustStore) {
+        try {
+            KeyStore instance = KeyStore.getInstance(trustStore.getType());
+            char[] charArray = trustStore.storePasswordProvider() != null ? trustStore.storePasswordProvider().getProvidedPassword().toCharArray() : null;
+            instance.load(new FileInputStream(trustStore.storeFile()), charArray);
+            TrustManagerFactory managerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            managerFactory.init(instance);
+            return managerFactory.getTrustManagers();
+        }
+        catch (Exception e) {
+            throw new SslConfigurationException(e);
+        }
+    }
+
+    private static TrustManager[] getDefaultTrustManagers() {
+        try {
+            TrustManagerFactory factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            factory.init((KeyStore) null);
+            return factory.getTrustManagers();
+        }
+        catch (Exception e) {
+            throw new SslConfigurationException(e);
+        }
     }
 
     /**
@@ -270,8 +350,9 @@ public class TlsHttpClientConfigurator implements UnaryOperator<HttpClient.Build
     @Override
     public HttpClient.Builder apply(@NonNull HttpClient.Builder builder) {
         Objects.requireNonNull(builder);
-        builder.sslContext(sslContext())
-                .sslParameters(sslParameters());
+        SSLContext context = sslContext();
+        builder.sslContext(context)
+                .sslParameters(sslParameters(context));
         return builder;
     }
 }

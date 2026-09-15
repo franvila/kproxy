@@ -8,9 +8,15 @@ package io.kroxylicious.proxy.internal.reload;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
+import io.kroxylicious.proxy.config.ClusterDefinition;
 import io.kroxylicious.proxy.config.Configuration;
 import io.kroxylicious.proxy.config.MicrometerDefinition;
 import io.kroxylicious.proxy.config.NamedFilterDefinition;
@@ -18,14 +24,23 @@ import io.kroxylicious.proxy.config.NetworkDefinition;
 import io.kroxylicious.proxy.config.PortIdentifiesNodeIdentificationStrategy;
 import io.kroxylicious.proxy.config.ProxyProtocolConfig;
 import io.kroxylicious.proxy.config.ProxyProtocolMode;
+import io.kroxylicious.proxy.config.RouteDefinition;
+import io.kroxylicious.proxy.config.RouteTarget;
+import io.kroxylicious.proxy.config.RouterDefinition;
 import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.config.VirtualCluster;
 import io.kroxylicious.proxy.config.VirtualClusterGateway;
+import io.kroxylicious.proxy.config.admin.EndpointsConfiguration;
 import io.kroxylicious.proxy.config.admin.ManagementConfiguration;
+import io.kroxylicious.proxy.config.admin.PrometheusMetricsConfig;
+import io.kroxylicious.proxy.micrometer.CommonTagsHook;
+import io.kroxylicious.proxy.micrometer.PauseDetectorHook;
+import io.kroxylicious.proxy.micrometer.StandardBindersHook;
 import io.kroxylicious.proxy.service.HostPort;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.params.provider.Arguments.argumentSet;
 
 class StaticSectionDifferTest {
 
@@ -45,10 +60,43 @@ class StaticSectionDifferTest {
     }
 
     @Test
+    void managementSectionsWithEquivalentPrometheusConfigsDoNotDiff() {
+        // A reconfigure that re-parses configuration produces a fresh PrometheusMetricsConfig
+        // instance. Unless that marker config has value equality, the management section would be
+        // flagged as a static change on every reconfigure of a metrics-enabled proxy, rejecting
+        // otherwise-valid hot reloads.
+        var oldConfig = withManagement(baseConfig(),
+                new ManagementConfiguration(null, null, new EndpointsConfiguration(new PrometheusMetricsConfig())));
+        var newConfig = withManagement(baseConfig(),
+                new ManagementConfiguration(null, null, new EndpointsConfiguration(new PrometheusMetricsConfig())));
+        assertThat(differ.diff(oldConfig, newConfig)).isEmpty();
+    }
+
+    static Stream<Arguments> equivalentHookConfigs() {
+        // Each supplier produces a fresh-but-equal plugin config instance, mimicking what re-parsing
+        // configuration yields. Covers every built-in micrometer hook config type.
+        return Stream.of(
+                argumentSet("CommonTagsHook", (Supplier<Object>) () -> new CommonTagsHook.CommonTagsHookConfig(Map.of("zone", "a"))),
+                argumentSet("StandardBindersHook", (Supplier<Object>) () -> new StandardBindersHook.StandardBindersHookConfig(List.of("UptimeMetrics"))),
+                argumentSet("PauseDetectorHook", (Supplier<Object>) () -> new PauseDetectorHook.PauseDetectorHookConfig(250L, 250L)));
+    }
+
+    @ParameterizedTest
+    @MethodSource("equivalentHookConfigs")
+    void micrometerSectionsWithEquivalentHookConfigsDoNotDiff(Supplier<Object> configFactory) {
+        // Re-parsing configuration yields a fresh plugin config instance each time. Unless those
+        // plugin config types have value equality, the micrometer section would be flagged as a
+        // static change on every reconfigure of a proxy with micrometer hooks configured.
+        var oldConfig = withMicrometer(baseConfig(), List.of(new MicrometerDefinition("hook", configFactory.get())));
+        var newConfig = withMicrometer(baseConfig(), List.of(new MicrometerDefinition("hook", configFactory.get())));
+        assertThat(differ.diff(oldConfig, newConfig)).isEmpty();
+    }
+
+    @Test
     void differingUseIoUringIsDetected() {
         var oldConfig = baseConfig();
-        var newConfig = new Configuration(oldConfig.management(), oldConfig.filterDefinitions(),
-                oldConfig.defaultFilters(), oldConfig.virtualClusters(), oldConfig.micrometer(),
+        var newConfig = new Configuration(oldConfig.management(), oldConfig.clusterDefinitions(), oldConfig.filterDefinitions(),
+                oldConfig.defaultFilters(), oldConfig.routerDefinitions(), oldConfig.virtualClusters(), oldConfig.micrometer(),
                 !oldConfig.useIoUring(), // toggled
                 oldConfig.development(), oldConfig.network(), oldConfig.proxyProtocol());
         assertThat(differ.diff(oldConfig, newConfig)).containsExactly("useIoUring");
@@ -64,8 +112,8 @@ class StaticSectionDifferTest {
     @Test
     void differingMicrometerIsDetected() {
         var oldConfig = baseConfig();
-        var newConfig = new Configuration(oldConfig.management(), oldConfig.filterDefinitions(),
-                oldConfig.defaultFilters(), oldConfig.virtualClusters(),
+        var newConfig = new Configuration(oldConfig.management(), oldConfig.clusterDefinitions(), oldConfig.filterDefinitions(),
+                oldConfig.defaultFilters(), oldConfig.routerDefinitions(), oldConfig.virtualClusters(),
                 List.of(new MicrometerDefinition("SomeMicrometerType", null)), // different from base's null
                 oldConfig.useIoUring(), oldConfig.development(), oldConfig.network(), oldConfig.proxyProtocol());
         assertThat(differ.diff(oldConfig, newConfig)).containsExactly("micrometer");
@@ -81,8 +129,8 @@ class StaticSectionDifferTest {
     @Test
     void differingDevelopmentIsDetected() {
         var oldConfig = baseConfig();
-        var newConfig = new Configuration(oldConfig.management(), oldConfig.filterDefinitions(),
-                oldConfig.defaultFilters(), oldConfig.virtualClusters(), oldConfig.micrometer(),
+        var newConfig = new Configuration(oldConfig.management(), oldConfig.clusterDefinitions(), oldConfig.filterDefinitions(),
+                oldConfig.defaultFilters(), oldConfig.routerDefinitions(), oldConfig.virtualClusters(), oldConfig.micrometer(),
                 oldConfig.useIoUring(),
                 Optional.of(Map.of("debug", "true")), // different from base's Optional.empty()
                 oldConfig.network(), oldConfig.proxyProtocol());
@@ -94,8 +142,10 @@ class StaticSectionDifferTest {
         var oldConfig = baseConfig();
         var newConfig = new Configuration(
                 new ManagementConfiguration(null, null, null), // changed: management
+                oldConfig.clusterDefinitions(),
                 oldConfig.filterDefinitions(),
                 oldConfig.defaultFilters(),
+                oldConfig.routerDefinitions(),
                 oldConfig.virtualClusters(),
                 oldConfig.micrometer(),
                 !oldConfig.useIoUring(), // changed: useIoUring
@@ -113,14 +163,34 @@ class StaticSectionDifferTest {
         var oldConfig = baseConfig();
         var newConfig = new Configuration(
                 oldConfig.management(),
+                oldConfig.clusterDefinitions(),
                 List.of(new NamedFilterDefinition("filter-a", "SomeFilterType", null)), // changed: filterDefinitions
                 List.of("filter-a"), // changed: defaultFilters
+                oldConfig.routerDefinitions(),
                 List.of(vc("different-cluster")), // changed: virtualClusters
                 oldConfig.micrometer(),
                 oldConfig.useIoUring(),
                 oldConfig.development(),
                 oldConfig.network(),
                 oldConfig.proxyProtocol());
+        assertThat(differ.diff(oldConfig, newConfig)).isEmpty();
+    }
+
+    @Test
+    void routerDefinitionsChangesAreReconcilable() {
+        // Given: a config with one router definition pointing to a known cluster
+        var cluster = new ClusterDefinition("upstream", "kafka:9092", null);
+        var route = new RouteDefinition("route-a", 0, null, new RouteTarget("upstream", null));
+        var oldRouterDef = new RouterDefinition("my-router", "SomeRouterType", null, List.of(route));
+        var oldConfig = new Configuration(null, List.of(cluster), null, null, List.of(oldRouterDef),
+                List.of(vc("base-cluster")), null, false, Optional.empty(), null, null);
+
+        // When: the router definition config changes
+        var newRouterDef = new RouterDefinition("my-router", "SomeRouterType", "new-config", List.of(route));
+        var newConfig = new Configuration(null, List.of(cluster), null, null, List.of(newRouterDef),
+                List.of(vc("base-cluster")), null, false, Optional.empty(), null, null);
+
+        // Then: routerDefinitions is reconcilable, so the differ reports no static diff
         assertThat(differ.diff(oldConfig, newConfig)).isEmpty();
     }
 
@@ -152,26 +222,30 @@ class StaticSectionDifferTest {
     // -------- fixture helpers --------
 
     private static Configuration baseConfig() {
-        return new Configuration(null, null, null,
-                List.of(vc("base-cluster")), null,
-                false, Optional.empty(), null, null);
+        return new Configuration(null, null, null, null, null, List.of(vc("base-cluster")), null, false, Optional.empty(), null, null);
     }
 
     private static Configuration withManagement(Configuration base, ManagementConfiguration management) {
-        return new Configuration(management, base.filterDefinitions(), base.defaultFilters(),
-                base.virtualClusters(), base.micrometer(),
+        return new Configuration(management, base.clusterDefinitions(), base.filterDefinitions(), base.defaultFilters(),
+                base.routerDefinitions(), base.virtualClusters(), base.micrometer(),
+                base.useIoUring(), base.development(), base.network(), base.proxyProtocol());
+    }
+
+    private static Configuration withMicrometer(Configuration base, List<MicrometerDefinition> micrometer) {
+        return new Configuration(base.management(), base.clusterDefinitions(), base.filterDefinitions(), base.defaultFilters(),
+                base.routerDefinitions(), base.virtualClusters(), micrometer,
                 base.useIoUring(), base.development(), base.network(), base.proxyProtocol());
     }
 
     private static Configuration withNetwork(Configuration base, NetworkDefinition network) {
-        return new Configuration(base.management(), base.filterDefinitions(), base.defaultFilters(),
-                base.virtualClusters(), base.micrometer(),
+        return new Configuration(base.management(), base.clusterDefinitions(), base.filterDefinitions(), base.defaultFilters(),
+                base.routerDefinitions(), base.virtualClusters(), base.micrometer(),
                 base.useIoUring(), base.development(), network, base.proxyProtocol());
     }
 
     private static Configuration withProxyProtocol(Configuration base, ProxyProtocolConfig proxyProtocol) {
-        return new Configuration(base.management(), base.filterDefinitions(), base.defaultFilters(),
-                base.virtualClusters(), base.micrometer(),
+        return new Configuration(base.management(), base.clusterDefinitions(), base.filterDefinitions(), base.defaultFilters(),
+                base.routerDefinitions(), base.virtualClusters(), base.micrometer(),
                 base.useIoUring(), base.development(), base.network(), proxyProtocol);
     }
 

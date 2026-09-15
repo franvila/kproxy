@@ -21,7 +21,8 @@ import static io.kroxylicious.systemtests.k8s.KubeClusterResource.kubeClient;
 public class MockOauthServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(MockOauthServer.class);
     private static final String MOCK_OAUTH_SERVER_DEFAULT_NAMESPACE = "lowkey-vault";
-    private static final String MOCK_OAUTH_SERVER_IMAGE = "ghcr.io/navikt/mock-oauth2-server:4.0.0@sha256:79f51f412caddb1e2120a5ae10d1f203e134f6e8328f1bc63c444acba33c9086";
+    @SuppressWarnings("java:S6418") // Sonar "thinks" this is a hard coded secret as it contains the string "AUTH" :cry:
+    private static final String MOCK_OAUTH_SERVER_IMAGE = "ghcr.io/navikt/mock-oauth2-server:5.0.2@sha256:f625692f5bf84939f3d0af4931f2c0f038dca84c4f1bac1171710d544181f97f";
     private final String deploymentNamespace;
     private static final String TENANT_ID = "tenant2";
 

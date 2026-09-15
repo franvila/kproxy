@@ -6,7 +6,13 @@
 
 package io.kroxylicious.kubernetes.operator.reconciler.kafkaservice;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
@@ -14,11 +20,14 @@ import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
+import io.javaoperatorsdk.operator.api.reconciler.EventSourceContext;
+import io.javaoperatorsdk.operator.processing.event.source.IndexerResourceCache;
 import io.strimzi.api.kafka.model.kafka.Kafka;
 import io.strimzi.api.kafka.model.kafka.KafkaBuilder;
-import io.strimzi.api.kafka.model.kafka.listener.GenericKafkaListenerBuilder;
+import io.strimzi.api.kafka.model.kafka.listener.KafkaListenerType;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerAddressBuilder;
 import io.strimzi.api.kafka.model.kafka.listener.ListenerStatusBuilder;
 
@@ -26,6 +35,7 @@ import io.kroxylicious.kubernetes.api.v1alpha1.KafkaService;
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaServiceBuilder;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -146,10 +156,12 @@ class MapperTestSupport {
             .endMetadata()
             .withNewSpec()
                 .withNewKafka()
-                    .withListeners(new GenericKafkaListenerBuilder()
+                    .addNewListener()
                             .withName("plain")
+                            .withPort(9092)
+                            .withType(KafkaListenerType.INTERNAL)
                             .withTls(false)
-                            .build())
+                        .endListener()
                 .endKafka()
             .endSpec()
             .withNewStatus()
@@ -172,5 +184,46 @@ class MapperTestSupport {
         when(mockOperation.list()).thenReturn(mockList);
         when(mockOperation.inNamespace(any())).thenReturn(mockOperation);
         return mockList;
+    }
+
+    public static void stubPrimaryCache(EventSourceContext<KafkaService> context, KafkaService... services) {
+        IndexerResourceCache<KafkaService> primaryCache = mock();
+        Map<String, Function<KafkaService, List<String>>> indexers = new HashMap<>();
+        when(primaryCache.byIndex(any(), any())).thenAnswer(invocation -> {
+            String indexName = invocation.getArgument(0);
+            String indexKey = invocation.getArgument(1);
+            Function<KafkaService, List<String>> indexer = indexers.get(indexName);
+            if (indexer == null) {
+                return List.of();
+            }
+            return Stream.of(services).filter(service -> indexer.apply(service).contains(indexKey)).toList();
+        });
+        doAnswer(invocation -> {
+            indexers.put(invocation.getArgument(0), invocation.getArgument(1));
+            return null;
+        }).when(primaryCache).addIndexer(any(), any());
+        when(primaryCache.list(any(), any())).thenAnswer(invocation -> {
+            String namespace = invocation.getArgument(0);
+            Predicate<KafkaService> predicate = invocation.getArgument(1);
+            return Stream.of(services)
+                    .filter(service -> Objects.equals(namespace, service.getMetadata().getNamespace()))
+                    .filter(predicate);
+        });
+        when(context.getPrimaryCache()).thenReturn(primaryCache);
+    }
+
+    public static void stubFailingListOperationClient(EventSourceContext<KafkaService> context) {
+        KubernetesClient client = mock();
+        when(context.getClient()).thenReturn(client);
+        MixedOperation<KafkaService, KubernetesResourceList<KafkaService>, Resource<KafkaService>> mockOperation = mock();
+        when(client.resources(KafkaService.class)).thenReturn(mockOperation);
+        when(mockOperation.inNamespace(any())).thenReturn(mockOperation);
+        when(mockOperation.list()).thenThrow(new KubernetesClientException("transient API server failure"));
+    }
+
+    public static EventSourceContext<KafkaService> mockContextContaining(KafkaService... services) {
+        EventSourceContext<KafkaService> context = mock();
+        stubPrimaryCache(context, services);
+        return context;
     }
 }

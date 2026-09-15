@@ -29,11 +29,15 @@ You will need to upload your GPG **public** key to some keyservers. You can foll
 
 Create-or-update the following repository secrets:
 
-| Secret                                        | Description                                                                                                                               |
-|-----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `KROXYLICIOUS_RELEASE_PRIVATE_KEY`            | Private key, in armor format, of the project admin conducting the release.                                                                |
-| `KROXYLICIOUS_RELEASE_PRIVATE_KEY_PASSPHRASE` | Passphrase used to protect the private key                                                                                                |
-| `KROXYLICIOUS_RELEASE_TOKEN`                  | GitHub PAT with write permissions for content, commit status, pull-requests for this repository and the kroxylicious.github.io repository |
+| Secret                                        | Description                                                                                                                                           |
+|-----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `KROXYLICIOUS_RELEASE_PRIVATE_KEY`            | Private key, in armor format, of the project admin conducting the release.                                                                            |
+| `KROXYLICIOUS_RELEASE_PRIVATE_KEY_PASSPHRASE` | Passphrase used to protect the private key                                                                                                            |
+
+Note that we depend on the following tokens that belong to the `kroxylicious-robot` user, defined at the Organization level (see [AUTOMATION_README.md](.github/AUTOMATION_README.md):
+| Secret                                        | Description                                                                                                                                           |
+|-----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `KROXYLICIOUS_RELEASE_TOKEN`                  | GitHub PAT with write permissions for content, commit status, pull-requests, workflows for this repository and the kroxylicious.github.io repository             |
 
 
 To export your key run something like

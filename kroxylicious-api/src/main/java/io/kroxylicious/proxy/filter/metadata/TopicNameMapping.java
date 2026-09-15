@@ -8,19 +8,21 @@ package io.kroxylicious.proxy.filter.metadata;
 
 import java.util.Map;
 
-import org.apache.kafka.common.Uuid;
-import org.apache.kafka.common.protocol.Errors;
+import io.kroxylicious.kafka.common.Uuid;
+import io.kroxylicious.kafka.common.protocol.Errors;
 
 /**
  * The result of discovering the topic names for a collection of topic ids
  */
 public interface TopicNameMapping {
     /**
+     * Returns true if there are any failures.
      * @return true if there are any failures
      */
     boolean anyFailures();
 
     /**
+     * Returns true if all name mappings failed.
      * @return true if all name mappings failed
      */
     default boolean allFailures() {
@@ -28,6 +30,7 @@ public interface TopicNameMapping {
     }
 
     /**
+     * Returns an immutable map from topic id to successfully mapped topic name.
      * @return immutable map from topic id to successfully mapped topic name
      */
     Map<Uuid, String> topicNames();
@@ -46,6 +49,9 @@ public interface TopicNameMapping {
      */
     Map<Uuid, TopicNameMappingException> failures();
 
+    /**
+     * A mapping containing no topic names and no failures.
+     */
     TopicNameMapping EMPTY = new TopicNameMapping() {
         @Override
         public boolean anyFailures() {

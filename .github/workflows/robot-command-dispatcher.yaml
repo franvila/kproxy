@@ -27,12 +27,12 @@ jobs:
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '@kroxylicious-robot')  && !contains(github.event.comment.body, '@kroxylicious-robot run')}}
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
       - name: 'Check out repository'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
 
@@ -74,7 +74,7 @@ jobs:
   dispatch-release-or-drop:
     needs: process-command
     if: ${{ needs.process-command.outputs.command == 'drop-release' || needs.process-command.outputs.command == 'promote-release' }}
-    uses: ./.github/workflows/promote_release.yaml
+    uses: $/.github/workflows/promote_release.yaml
     with:
       command: ${{ needs.process-command.outputs.command }}
       release-pr-issue-number: ${{ github.event.issue.number }}
@@ -86,12 +86,12 @@ jobs:
     if: ${{ needs.process-command.outputs.unrecognized == 'true' }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # v2.19.3
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
       - name: 'Check out repository'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
 

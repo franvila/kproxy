@@ -30,11 +30,11 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.OptionalInt;
 
-import org.apache.kafka.common.message.ApiMessageType;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.message.ApiMessageType;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 
 import io.kroxylicious.proxy.filter.Filter;
 import io.kroxylicious.proxy.filter.FilterContext;
@@ -55,12 +55,18 @@ public class SpecificFilterArrayInvoker implements FilterInvoker {
     private final FilterInvoker[] requestInvokers;
     private final FilterInvoker[] responseInvokers;
 
+    /**
+     * Creates an invoker for the given filter, wiring up an invoker for each
+     * specific message filter interface the filter implements.
+     *
+     * @param filter the filter to invoke
+     */
     public SpecificFilterArrayInvoker(Filter filter) {
         Map<Integer, FilterInvoker> requestInvokers = new HashMap<>();
         Map<Integer, FilterInvoker> responseInvokers = new HashMap<>();
         <#list inputSpecs as inputSpec>
-        if (filter instanceof ${inputSpec.name}Filter) {
-            ${inputSpec.type?lower_case}Invokers.put(${inputSpec.apiKey.get()}, new ${inputSpec.name}FilterInvoker((${inputSpec.name}Filter) filter));
+        if (filter instanceof ${inputSpec.name}Filter ${inputSpec.name?uncap_first}Filter) {
+            ${inputSpec.type?lower_case}Invokers.put(${inputSpec.apiKey.get()}, new ${inputSpec.name}FilterInvoker(${inputSpec.name?uncap_first}Filter));
         }
         </#list>
         this.requestInvokers = createFrom(requestInvokers);
@@ -87,7 +93,7 @@ public class SpecificFilterArrayInvoker implements FilterInvoker {
         return switch (apiKey) {
 <#list inputSpecs as inputSpec>
     <#if inputSpec.type?lower_case == 'request'>
-            case ${retrieveApiKey(inputSpec)} ->
+            case ${inputSpec.kafkaApiKeyEnumName} ->
                 requestInvokers[apiKey.id].onRequest(apiKey, apiVersion, header, body, filterContext);
     </#if>
 </#list>
@@ -116,7 +122,7 @@ public class SpecificFilterArrayInvoker implements FilterInvoker {
         return switch (apiKey) {
 <#list inputSpecs as inputSpec>
     <#if inputSpec.type?lower_case == 'response'>
-            case ${retrieveApiKey(inputSpec)} ->
+            case ${inputSpec.kafkaApiKeyEnumName} ->
                     responseInvokers[apiKey.id].onResponse(apiKey, apiVersion, header, body, filterContext);
     </#if>
 </#list>
@@ -149,7 +155,7 @@ public class SpecificFilterArrayInvoker implements FilterInvoker {
         return switch (apiKey) {
 <#list inputSpecs as inputSpec>
     <#if inputSpec.type?lower_case == 'request'>
-            case ${retrieveApiKey(inputSpec)} ->
+            case ${inputSpec.kafkaApiKeyEnumName} ->
                     requestInvokers[apiKey.id].shouldHandleRequest(apiKey, apiVersion);
     </#if>
 </#list>
@@ -182,7 +188,7 @@ public class SpecificFilterArrayInvoker implements FilterInvoker {
             // See the InvokerDispatchBenchmark micro benchmark for a comparison
 <#list inputSpecs as inputSpec>
     <#if inputSpec.type?lower_case == 'response'>
-            case ${retrieveApiKey(inputSpec)} ->
+            case ${inputSpec.kafkaApiKeyEnumName} ->
                     responseInvokers[apiKey.id].shouldHandleResponse(apiKey, apiVersion);
     </#if>
 </#list>

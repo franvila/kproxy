@@ -10,22 +10,22 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Stream;
 
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiMessage;
 import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.Mockito;
 
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.RequestFilterResult;
 import io.kroxylicious.proxy.filter.ResponseFilterResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class PassthroughTest {
 
@@ -69,7 +69,7 @@ class PassthroughTest {
         FilterContext context = mock(FilterContext.class);
         AuthorizationFilter filter = mock(AuthorizationFilter.class);
         CompletionStage<RequestFilterResult> expectedStage = new CompletableFuture<>();
-        Mockito.when(context.forwardRequest(requestHeaderData, message)).thenReturn(expectedStage);
+        when(context.forwardRequest(requestHeaderData, message)).thenReturn(expectedStage);
         CompletionStage<RequestFilterResult> actualStage = passthrough.onRequest(requestHeaderData, message, context, filter);
         assertThat(actualStage).isSameAs(expectedStage);
     }
@@ -82,7 +82,7 @@ class PassthroughTest {
         FilterContext context = mock(FilterContext.class);
         AuthorizationFilter filter = mock(AuthorizationFilter.class);
         CompletionStage<ResponseFilterResult> expectedStage = new CompletableFuture<>();
-        Mockito.when(context.forwardResponse(responseHeaderData, message)).thenReturn(expectedStage);
+        when(context.forwardResponse(responseHeaderData, message)).thenReturn(expectedStage);
         CompletionStage<ResponseFilterResult> actualStage = passthrough.onResponse(responseHeaderData, message, context, filter);
         assertThat(actualStage).isSameAs(expectedStage);
     }

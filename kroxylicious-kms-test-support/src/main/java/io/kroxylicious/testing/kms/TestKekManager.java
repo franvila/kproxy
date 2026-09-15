@@ -29,7 +29,7 @@ public interface TestKekManager {
      * Removes a KEK from the KMS with given alias.
      *
      * @param alias kek alias
-     * @throws UnknownAliasException alias already exists
+     * @throws UnknownAliasException a KEK with the given alias is not found
      */
     void deleteKek(String alias);
 
@@ -71,12 +71,27 @@ public interface TestKekManager {
      */
     Object read(String alias);
 
+    /**
+     * Exception thrown when generating a KEK with an alias that already exists.
+     */
     class AlreadyExistsException extends KmsException {
+        /**
+         * Creates the exception.
+         *
+         * @param alias kek alias that already exists.
+         */
         public AlreadyExistsException(String alias) {
             super(alias);
         }
     }
 
+    /**
+     * Unwraps a {@link CompletionException}, returning its cause if it is a {@link RuntimeException},
+     * otherwise a new {@link RuntimeException} wrapping the cause.
+     *
+     * @param e completion exception to unwrap
+     * @return the unwrapped runtime exception.
+     */
     default RuntimeException toRuntimeException(@NonNull CompletionException e) {
         var cause = e.getCause();
         return cause instanceof RuntimeException re ? re : new RuntimeException(cause);

@@ -12,13 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-import org.apache.kafka.common.message.ApiVersionsRequestData;
-import org.apache.kafka.common.message.MetadataRequestData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.SaslAuthenticateRequestData;
-import org.apache.kafka.common.message.SaslHandshakeRequestData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
+import org.apache.kafka.common.errors.UnknownServerException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,10 +33,21 @@ import io.netty.handler.codec.DecoderException;
 import io.netty.handler.ssl.SniCompletionEvent;
 import io.netty.handler.ssl.SslContextBuilder;
 
+import io.kroxylicious.kafka.common.message.ApiVersionsRequestData;
+import io.kroxylicious.kafka.common.message.ApiVersionsResponseData;
+import io.kroxylicious.kafka.common.message.MetadataRequestData;
+import io.kroxylicious.kafka.common.message.ProduceRequestData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.SaslAuthenticateRequestData;
+import io.kroxylicious.kafka.common.message.SaslHandshakeRequestData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.protocol.Errors;
 import io.kroxylicious.proxy.bootstrap.FilterChainFactory;
+import io.kroxylicious.proxy.bootstrap.TlsCredentialSupplierManager;
 import io.kroxylicious.proxy.config.CacheConfiguration;
-import io.kroxylicious.proxy.config.NamedFilterDefinition;
 import io.kroxylicious.proxy.config.PluginFactoryRegistry;
+import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.filter.FilterFactoryContext;
 import io.kroxylicious.proxy.frame.DecodedFrame;
 import io.kroxylicious.proxy.frame.DecodedRequestFrame;
@@ -54,6 +59,8 @@ import io.kroxylicious.proxy.internal.filter.impl.TopicNameCacheFilter;
 import io.kroxylicious.proxy.internal.net.EndpointBinding;
 import io.kroxylicious.proxy.internal.net.EndpointReconciler;
 import io.kroxylicious.proxy.internal.net.HaProxyContext;
+import io.kroxylicious.proxy.internal.routing.DirectRouting;
+import io.kroxylicious.proxy.internal.routing.UpstreamClusterModel;
 import io.kroxylicious.proxy.internal.subject.DefaultSubjectBuilder;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
 import io.kroxylicious.proxy.model.VirtualClusterModel.VirtualClusterGatewayModel;
@@ -75,6 +82,7 @@ class KafkaProxyFrontendHandlerTest {
     public static final String CLUSTER_HOST = "internal.example.org";
     public static final int CLUSTER_PORT = 9092;
     public static final String CLUSTER_NAME = "RandomCluster";
+    public static final String DIRECT_ROUTE_NAME = "upstream";
     EmbeddedChannel inboundChannel;
     EmbeddedChannel outboundChannel;
 
@@ -83,15 +91,11 @@ class KafkaProxyFrontendHandlerTest {
 
     ClientConnectionStateMachine clientConnectionStateMachine(EndpointBinding endpointBinding) {
         var kafkaSession = new KafkaSession(KafkaSessionState.ESTABLISHING);
-        return new ClientConnectionStateMachine(Objects.requireNonNull(endpointBinding), new DefaultSubjectBuilder(List.of()), kafkaSession) {
-            @Override
-            ServerConnectionStateMachine createServerConnection(HostPort remote) {
-                return new ServerConnectionStateMachine(
-                        remote,
-                        this,
-                        virtualCluster(),
-                        clusterName(),
-                        nodeId()) {
+        return new ClientConnectionStateMachine(Objects.requireNonNull(endpointBinding), new DefaultSubjectBuilder(List.of()), kafkaSession,
+                (remote, ccsm, vc, cn, ni, connectionCounter, errorCounter, backpressureMeter, connectionToken, tlsConfig) -> new ServerConnectionStateMachine(remote,
+                        ccsm,
+                        vc, cn, ni, connectionCounter, errorCounter,
+                        backpressureMeter, connectionToken, tlsConfig) {
                     @Override
                     Bootstrap configureBootstrap(
                                                  KafkaProxyBackendHandler capturedBackendHandler,
@@ -116,9 +120,7 @@ class KafkaProxyFrontendHandlerTest {
                         outboundChannel.pipeline().fireChannelRegistered();
                         return outboundChannel.newPromise();
                     }
-                };
-            }
-        };
+                });
     }
 
     private PluginFactoryRegistry pfr;
@@ -153,9 +155,9 @@ class KafkaProxyFrontendHandlerTest {
 
     @AfterEach
     void closeChannel() {
-        inboundChannel.close();
+        inboundChannel.close().syncUninterruptibly();
         if (outboundChannel != null) {
-            outboundChannel.close();
+            outboundChannel.close().syncUninterruptibly();
         }
     }
 
@@ -244,11 +246,18 @@ class KafkaProxyFrontendHandlerTest {
         assertStateIsClosed(clientConnectionStateMachine);
     }
 
-    private static VirtualClusterModel mockVirtualClusterModel(String cluster) {
+    private VirtualClusterModel mockVirtualClusterModel(String cluster) {
         VirtualClusterModel virtualClusterModel = mock(VirtualClusterModel.class);
         when(virtualClusterModel.getClusterName()).thenReturn(cluster);
         TopicNameCacheFilter topicNameCacheFilter = new TopicNameCacheFilter(CacheConfiguration.DEFAULT, cluster);
         when(virtualClusterModel.getTopicNameCacheFilter()).thenReturn(topicNameCacheFilter);
+        // FCF is now resolved per-connection from the VC (see #4055). Wire the test's fcf
+        // mock through the VC so verify(fcf).createFilters(...) still works.
+        when(virtualClusterModel.filterChainFactory()).thenReturn(fcf);
+        var targetCluster = new TargetCluster(CLUSTER_HOST + ":" + CLUSTER_PORT, Optional.empty());
+        when(virtualClusterModel.routing()).thenReturn(new DirectRouting(DIRECT_ROUTE_NAME, targetCluster));
+        when(virtualClusterModel.getUpstreamClusterForRoute(DIRECT_ROUTE_NAME))
+                .thenReturn(new UpstreamClusterModel(targetCluster, Optional.empty(), TlsCredentialSupplierManager.unconfigured()));
         return virtualClusterModel;
     }
 
@@ -338,10 +347,7 @@ class KafkaProxyFrontendHandlerTest {
     }
 
     KafkaProxyFrontendHandler handler(DelegatingDecodePredicate dp, ClientConnectionStateMachine clientConnectionStateMachine) {
-        var namedFilterDefs = List.<NamedFilterDefinition> of();
         return new KafkaProxyFrontendHandler(pfr,
-                fcf,
-                namedFilterDefs,
                 mock(EndpointReconciler.class),
                 new ApiVersionsServiceImpl(),
                 dp,
@@ -352,10 +358,6 @@ class KafkaProxyFrontendHandlerTest {
 
     /**
      * Test the normal flow, in a number of configurations.
-     *
-     * @param sslConfigured         Whether SSL is configured
-     * @param haProxyConfigured
-     * @param sendSasl
      */
     @ParameterizedTest
     @MethodSource("provideArgsForExpectedFlow")
@@ -372,7 +374,6 @@ class KafkaProxyFrontendHandlerTest {
         when(endpointBinding.endpointGateway()).thenReturn(virtualClusterListenerModel);
         when(endpointBinding.upstreamTarget()).thenReturn(new HostPort(CLUSTER_HOST, CLUSTER_PORT));
         when(virtualClusterListenerModel.virtualCluster()).thenReturn(virtualCluster);
-        when(virtualCluster.getUpstreamSslContext()).thenReturn(Optional.empty());
         when(virtualCluster.getClusterName()).thenReturn(CLUSTER_NAME);
         var clientConnectionStateMachine = this.clientConnectionStateMachine(endpointBinding);
 
@@ -511,7 +512,7 @@ class KafkaProxyFrontendHandlerTest {
         assertTrue(inboundChannel.config().isAutoRead(),
                 "Expect inbound autoRead=true, since outbound now active");
         assertThat(clientConnectionStateMachine.state()).isExactlyInstanceOf(ClientConnectionState.Forwarding.class);
-        verify(fcf).createFilters(any(FilterFactoryContext.class), any(List.class));
+        verify(fcf).createFilters(any(FilterFactoryContext.class));
     }
 
     private List<String> outboundClientSoftwareNames() {
@@ -575,7 +576,6 @@ class KafkaProxyFrontendHandlerTest {
         var virtualCluster = mockVirtualClusterModel("test-cluster");
         var virtualClusterListenerModel = mock(VirtualClusterGatewayModel.class);
         when(virtualClusterListenerModel.virtualCluster()).thenReturn(virtualCluster);
-        when(virtualCluster.getUpstreamSslContext()).thenReturn(Optional.empty());
         EndpointBinding endpointBinding = mock(EndpointBinding.class);
         when(endpointBinding.endpointGateway()).thenReturn(virtualClusterListenerModel);
         when(endpointBinding.nodeId()).thenReturn(null);
@@ -625,6 +625,62 @@ class KafkaProxyFrontendHandlerTest {
 
         // Then
         assertThat(handler.clientChannel()).isSameAs(inboundChannel);
+    }
+
+    @Test
+    void buildErrorResponseFrameReturnsNullForApiKeyThatSendsNoResponse() {
+        // Given
+        var frame = produceFrame(42, (short) 0);
+
+        // When
+        var result = KafkaProxyFrontendHandler.buildErrorResponseFrame(frame, new UnknownServerException("boom"));
+
+        // Then
+        assertThat(result).isNull();
+    }
+
+    @Test
+    void buildErrorResponseFrameBuildsFrameForApiKeyThatSendsResponse() {
+        // Given
+        var frame = produceFrame(42, (short) 1);
+
+        // When
+        var result = KafkaProxyFrontendHandler.buildErrorResponseFrame(frame, new UnknownServerException("boom"));
+
+        // Then
+        assertThat(result).isNotNull();
+        assertThat(result.correlationId()).isEqualTo(42);
+    }
+
+    @Test
+    void buildErrorResponseFrameHandlesFrameOversizedException() {
+        // Given
+        var header = new RequestHeaderData()
+                .setRequestApiKey(ApiKeys.API_VERSIONS.id)
+                .setRequestApiVersion(ApiKeys.API_VERSIONS.latestVersion())
+                .setCorrelationId(42);
+        var frame = new DecodedRequestFrame<>((short) 9, 42, true, header, new ApiVersionsRequestData());
+        DecoderException exception = new DecoderException(new FrameOversizedException(1, 2));
+
+        // When
+        var result = KafkaProxyFrontendHandler.buildErrorResponseFrame(frame, exception);
+
+        // Then
+        assertThat(result).isNotNull();
+        assertThat(result.correlationId()).isEqualTo(42);
+        assertThat(result).isInstanceOfSatisfying(DecodedFrame.class, decodedFrame -> {
+            assertThat(decodedFrame.body()).isInstanceOfSatisfying(ApiVersionsResponseData.class, responseData -> {
+                assertThat(responseData.errorCode()).isEqualTo(Errors.INVALID_REQUEST.code());
+            });
+        });
+    }
+
+    private static DecodedRequestFrame<ProduceRequestData> produceFrame(int correlationId, short acks) {
+        var header = new RequestHeaderData()
+                .setRequestApiKey(ApiKeys.PRODUCE.id)
+                .setRequestApiVersion((short) 9)
+                .setCorrelationId(correlationId);
+        return new DecodedRequestFrame<>((short) 9, correlationId, true, header, new ProduceRequestData().setAcks(acks));
     }
 
 }

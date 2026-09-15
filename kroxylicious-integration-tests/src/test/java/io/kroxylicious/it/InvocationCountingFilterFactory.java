@@ -12,10 +12,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
-
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 import io.kroxylicious.proxy.filter.Filter;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.FilterFactory;
@@ -46,7 +44,8 @@ public class InvocationCountingFilterFactory implements FilterFactory<Invocation
     public Filter createFilter(FilterFactoryContext context, Config initializationData) {
         return new RequestFilter() {
             @Override
-            public CompletionStage<RequestFilterResult> onRequest(ApiKeys apiKey, short apiVersion, RequestHeaderData header, ApiMessage request, FilterContext context) {
+            public CompletionStage<RequestFilterResult> onRequest(io.kroxylicious.kafka.common.protocol.ApiKeys apiKey, short apiVersion, RequestHeaderData header,
+                                                                  ApiMessage request, FilterContext context) {
                 return context.forwardRequest(header, request);
             }
         };
@@ -61,17 +60,41 @@ public class InvocationCountingFilterFactory implements FilterFactory<Invocation
         assertThat(initializeCounts.get(configId)).hasValue(count);
     }
 
-    public static void assertAllClosedAndResetCounts() {
-        // Everything that was initialised gets closed
-        for (var entry : initializeCounts.entrySet()) {
-            UUID uuid = entry.getKey();
-            assertThat(closeCounts.get(uuid)).hasValue(entry.getValue().intValue());
-        }
-        // Nothing what closed that wasn't initialized
-        assertThat(closeCounts.keySet()).isEqualTo(initializeCounts.keySet());
+    /**
+     * Returns the current close count for the given configId, or {@code 0} if {@code close} has
+     * never been invoked for that config. Lets tests assert on per-config close timing inline
+     * (e.g. during the body of a hot-reload sequence) rather than waiting for the bulk
+     * {@link #assertAllClosedAndResetCounts()} at teardown.
+     */
+    public static int closeCountFor(UUID configId) {
+        var counter = closeCounts.get(configId);
+        return counter == null ? 0 : counter.get();
+    }
 
-        initializeCounts.clear();
-        closeCounts.clear();
+    /**
+     * Returns the current initialize count for the given configId, or {@code 0} if not initialized.
+     */
+    public static int initializationCountFor(UUID configId) {
+        var counter = initializeCounts.get(configId);
+        return counter == null ? 0 : counter.get();
+    }
+
+    public static void assertAllClosedAndResetCounts() {
+        // Reset in a finally so a failing assertion doesn't leak this test's counts into
+        // every subsequent test (and test class) sharing these static maps.
+        try {
+            // Everything that was initialised gets closed
+            for (var entry : initializeCounts.entrySet()) {
+                UUID uuid = entry.getKey();
+                assertThat(closeCounts.get(uuid)).hasValue(entry.getValue().intValue());
+            }
+            // Nothing what closed that wasn't initialized
+            assertThat(closeCounts.keySet()).isEqualTo(initializeCounts.keySet());
+        }
+        finally {
+            initializeCounts.clear();
+            closeCounts.clear();
+        }
     }
 
     public record Config(UUID configInstanceId) {

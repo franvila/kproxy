@@ -14,7 +14,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import edu.umd.cs.findbugs.annotations.Nullable;
 
 /**
- * Configuration for validating a component ByteBuffer of a {@link org.apache.kafka.common.record.Record} is syntactically correct JSON.
+ * Configuration for validating a component ByteBuffer of a {@link io.kroxylicious.kafka.common.record.internal.Record} is syntactically correct JSON.
  */
 public class SyntacticallyCorrectJsonConfig {
     private final boolean validateObjectKeysUnique;
@@ -37,6 +37,8 @@ public class SyntacticallyCorrectJsonConfig {
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass") // Jackson-bound config type, and not final. Exact-type equality is deliberate: a subclass adding
+    // further JSON options must not compare equal to this one.
     public boolean equals(Object o) {
         if (this == o) {
             return true;

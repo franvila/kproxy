@@ -15,10 +15,9 @@ set +u
 REPOSITORY="origin"
 BRANCH_FROM="main"
 WORK_BRANCH_NAME="release-work-$(openssl rand -hex 12)"
-SKIP_VALIDATION="false"
 RELEASE_NOTES_DIR=${RELEASE_NOTES_DIR:-.releaseNotes}
-PROXY_IMAGE_REPO="quay.io/kroxylicious/proxy"
-while getopts ":i:l:v:b:k:r:n:w:sh" opt; do
+CHANGELOG_LINK_PREFIX="https://github.com/kroxylicious/kroxylicious"
+while getopts ":l:v:b:k:r:n:w:c:h" opt; do
   case $opt in
     v) RELEASE_VERSION="${OPTARG}"
     ;;
@@ -30,26 +29,23 @@ while getopts ":i:l:v:b:k:r:n:w:sh" opt; do
     ;;
     k) GPG_KEY="${OPTARG}"
     ;;
-    i) PROXY_IMAGE_REPO="${OPTARG}"
-    ;;
     l) RELCAND_ID_LABEL="${OPTARG}"
     ;;
     w) WORK_BRANCH_NAME="${OPTARG}"
     ;;
-    s) SKIP_VALIDATION="true"
+    c) CHANGELOG_LINK_PREFIX="${OPTARG}"
     ;;
     h)
       1>&2 cat << EOF
-usage: $0 -k keyid -v version -l relcand-label [-b branch] [-r repository] [-i proxy-image-repo] [-s] [-d] [-h]
+usage: $0 -k keyid -v version -l relcand-label [-b branch] [-r repository] [-c changelog-link-prefix] [-h]
  -k short key id used to sign the release
  -v version number e.g. 0.3.0
  -b branch to release from (defaults to 'main')
  -n development version e.g. 0.4.0-SNAPSHOT
  -l Release candidate label to be applied to the PR.
  -r the remote name of the kroxylicious repository (defaults to 'origin')
- -i proxy image repo override for arm64 verification (default: quay.io/kroxylicious/proxy)
  -w release work branch
- -s skips validation
+ -c URL prefix for issue/PR links in the changelog (defaults to https://github.com/kroxylicious/kroxylicious)
  -h this help message
 EOF
       exit 1
@@ -98,7 +94,7 @@ replaceInFile() {
 }
 
 updateVersionInBenchmarks() {
-  replaceInFile "s|KROXYLICIOUS_VERSION:-[0-9]+\.[0-9]+\.[0-9]+|KROXYLICIOUS_VERSION:-${1}|g" \
+  replaceInFile "s|KROXYLICIOUS_VERSION:-[^}]*|KROXYLICIOUS_VERSION:-${1}|g" \
     kroxylicious-openmessaging-benchmarks/scripts/setup-cluster.sh
 }
 
@@ -126,7 +122,7 @@ cleanup() {
 updateVersions() {
   local FROM_VERSION=$1
   local NEW_VERSION=$2
-  mvn -q -B versions:set -DnewVersion="${NEW_VERSION}" -DgenerateBackupPoms=false -DprocessAllModules=true
+  mvn --quiet --batch-mode versions:set -DnewVersion="${NEW_VERSION}" -DgenerateBackupPoms=false -DprocessAllModules=true
 
   git add '**/*.yaml' '**/pom.xml' 'pom.xml'
 }
@@ -136,20 +132,19 @@ trap cleanup EXIT
 git stash --all
 echo "Creating release branch from ${BRANCH_FROM}"
 git fetch -q "${REPOSITORY}"
-INITIAL_VERSION=$(mvn org.apache.maven.plugins:maven-help-plugin:3.4.0:evaluate -Dexpression=project.version -q -DforceStdout)
+INITIAL_VERSION=$(mvn help:evaluate -Dexpression=project.version --quiet -DforceStdout)
 
 TEMPORARY_RELEASE_BRANCH="${WORK_BRANCH_NAME}-rel"
 git checkout -b "${TEMPORARY_RELEASE_BRANCH}" "${REPOSITORY}/${BRANCH_FROM}"
 
-if [[ "${SKIP_VALIDATION:-false}" != true ]]; then
-    printf "Validating the build is ${GREEN}green${NC}"
-    mvn -q clean verify
-fi
-
 echo "Versioning Kroxylicious as ${RELEASE_VERSION}"
 updateVersions "${INITIAL_VERSION}" "${RELEASE_VERSION}"
-#Set the release version in the Changelog
-replaceInFile "s_##\sSNAPSHOT_## ${RELEASE_VERSION//./\\.}_g" CHANGELOG.md
+${SED} -i "s|\\\${changelog.link.prefix}|${CHANGELOG_LINK_PREFIX}|g" changelog/.templates/CHANGELOG.md
+mvn --quiet logchange:release
+# logchange:release rewrites the CHANGELOG template and empties changelog/unreleased,
+# deleting the .gitkeep that keeps the directory tracked. Restore both.
+git checkout -- changelog/.templates/CHANGELOG.md changelog/unreleased/.gitkeep
+git add changelog/ CHANGELOG.md
 
 replaceInFile "s_:KroxyliciousVersion:.*_:KroxyliciousVersion: ${RELEASE_VERSION}_g" kroxylicious-docs/docs/_assets/attributes.adoc
 replaceInFile "s_:KroxyliciousGitRef:.*_:KroxyliciousGitRef: v${RELEASE_VERSION}_g" kroxylicious-docs/docs/_assets/attributes.adoc
@@ -158,23 +153,23 @@ replaceInFile "s_image: 'quay.io/kroxylicious/proxy:.*'_image: 'quay.io/kroxylic
 
 updateVersionInBenchmarks "${RELEASE_VERSION}"
 replaceInFile "s_quay\.io/kroxylicious/proxy:[^}]*_quay.io/kroxylicious/proxy:${RELEASE_VERSION}_g" performance-tests/docker-compose.yaml
+replaceInFile "s_io\.kroxylicious:kroxylicious-migrations:[^ ]*_io.kroxylicious:kroxylicious-migrations:${RELEASE_VERSION}_g" kroxylicious-proxy-core/kroxylicious-migrations/README.md
 
 echo "Validating things still build"
-mvn -q -B clean install -Pquick
+mvn --quiet --batch-mode clean install --activate-profiles quick
 
 RELEASE_TAG="v${RELEASE_VERSION}"
 
 echo "Committing release to git"
 git commit --message "Release version ${RELEASE_TAG}" --signoff
 
-git tag -f "${RELEASE_TAG}"
-
-git push "${REPOSITORY}" "${RELEASE_TAG}"
+echo "Pushing release branch ${TEMPORARY_RELEASE_BRANCH} to ${REPOSITORY}"
+git push "${REPOSITORY}" "${TEMPORARY_RELEASE_BRANCH}"
 
 echo "Deploying release"
 
 MVN_DEPLOY_OUTPUT=$(mktemp)
-mvn -Prelease,dist -DskipTests=true -DskipDocs=true -DskipContainerImageBuild=true -DreleaseSigningKey="${GPG_KEY}" -DprocessAllModules=true deploy | tee ${MVN_DEPLOY_OUTPUT}
+mvn --activate-profiles release,dist -DskipTests=true -DskipDocs=true -DskipContainerImageBuild=true -DreleaseSigningKey="${GPG_KEY}" -DprocessAllModules=true deploy | tee ${MVN_DEPLOY_OUTPUT}
 DEPLOYMENT_ID=$(awk -F'[ .]' '/Uploaded bundle successfully/ {print $9}' < ${MVN_DEPLOY_OUTPUT})
 
 if [[ -z "${DEPLOYMENT_ID}" ]]; then
@@ -194,22 +189,21 @@ PREPARE_DEVELOPMENT_BRANCH="${WORK_BRANCH_NAME}"
 git checkout -b "${PREPARE_DEVELOPMENT_BRANCH}" "${TEMPORARY_RELEASE_BRANCH}"
 
 updateVersions "${RELEASE_VERSION}" "${NEXT_VERSION}"
-# bump the Changelog to the next SNAPSHOT version. We do it this way so the changelog has the new release as the first entry
-replaceInFile "s_##\s${RELEASE_VERSION//./\\.}_## SNAPSHOT\n## ${RELEASE_VERSION//./\\.}_g" CHANGELOG.md
 
 # bump the docs for the development version
 replaceInFile "s_:KroxyliciousVersion:.*_:KroxyliciousVersion: ${NEXT_VERSION}_g" kroxylicious-docs/docs/_assets/attributes.adoc
-replaceInFile "s_:KroxyliciousGitRef:.*_:KroxyliciousGitRef: main_g" kroxylicious-docs/docs/_assets/attributes.adoc # this doesn't make a lot sense...
+replaceInFile "s_:KroxyliciousGitRef:.*_:KroxyliciousGitRef: ${BRANCH_FROM}_g" kroxylicious-docs/docs/_assets/attributes.adoc
 
 replaceInFile "s_image: 'quay.io/kroxylicious/proxy:.*'_image: 'quay.io/kroxylicious/proxy:${NEXT_VERSION}'_g" compose/kafka-compose.yaml
 
 updateVersionInBenchmarks "${NEXT_VERSION}"
 replaceInFile "s_quay\.io/kroxylicious/proxy:[^}]*_quay.io/kroxylicious/proxy:${NEXT_VERSION}_g" performance-tests/docker-compose.yaml
+replaceInFile "s_io\.kroxylicious:kroxylicious-migrations:[^ ]*_io.kroxylicious:kroxylicious-migrations:${NEXT_VERSION}_g" kroxylicious-proxy-core/kroxylicious-migrations/README.md
 
 # bump the reference version in kroxylicious-api
-mvn -q -B -pl :kroxylicious-api versions:set-property -Dproperty="ApiCompatability.ReferenceVersion" -DnewVersion="${RELEASE_VERSION}" -DgenerateBackupPoms=false
+mvn --quiet --batch-mode --projects :kroxylicious-api versions:set-property -Dproperty="ApiCompatability.ReferenceVersion" -DnewVersion="${RELEASE_VERSION}" -DgenerateBackupPoms=false
 # reset kroxylicious-api to enable semver checks if they have been disabled
-mvn -q -B -pl :kroxylicious-api versions:set-property -Dproperty="ApiCompatability.EnforceForMajorVersionZero" -DnewVersion="true" -DgenerateBackupPoms=false
+mvn --quiet --batch-mode --projects :kroxylicious-api versions:set-property -Dproperty="ApiCompatability.EnforceForMajorVersionZero" -DnewVersion="true" -DgenerateBackupPoms=false
 git add kroxylicious-api/pom.xml
 
 git commit --message "Start next development version" --signoff
@@ -217,33 +211,6 @@ git commit --message "Start next development version" --signoff
 
 ORIGINAL_GH_DEFAULT_REPO=$(gh repo set-default -v | (grep -v 'no default repository' || true))
 gh repo set-default "$(git remote get-url "${REPOSITORY}")"
-
-# create GitHub release via CLI https://cli.github.com/manual/gh_release_create
-# it is created as a draft, the deploy_release workflow will publish it.
-echo "Creating draft release notes."
-API_COMPATABILITY_REPORT=kroxylicious-api/target/japicmp/"${RELEASE_VERSION}"-compatability.html
-cp kroxylicious-api/target/japicmp/japicmp.html "${API_COMPATABILITY_REPORT}"
-# csplit will create a file for every version as we use ## to denote versions. We also use # CHANGELOG as a header so the current release is actually in the 01 file (zero based)
-APP_BINARY_DISTRIBUTION_ASSET="./kroxylicious-app/target/kroxylicious-app-${RELEASE_VERSION}-bin"
-OPERATOR_BINARY_DISTRIBUTION_ASSET="./kroxylicious-kubernetes/kroxylicious-operator-dist/target/kroxylicious-operator-${RELEASE_VERSION}"
-ADMISSION_BINARY_DISTRIBUTION_ASSET="./kroxylicious-kubernetes/kroxylicious-admission-dist/target/kroxylicious-admission-${RELEASE_VERSION}"
-gh release create --title "${RELEASE_TAG}" \
-  --notes-file "${RELEASE_NOTES_DIR}/release-notes_01" \
-  --draft "${RELEASE_TAG}" \
-  "${APP_BINARY_DISTRIBUTION_ASSET}.tar.gz" \
-  "${APP_BINARY_DISTRIBUTION_ASSET}.tar.gz.asc" \
-  "${APP_BINARY_DISTRIBUTION_ASSET}.zip" \
-  "${APP_BINARY_DISTRIBUTION_ASSET}.zip.asc" \
-  "${OPERATOR_BINARY_DISTRIBUTION_ASSET}.tar.gz" \
-  "${OPERATOR_BINARY_DISTRIBUTION_ASSET}.tar.gz.asc" \
-  "${OPERATOR_BINARY_DISTRIBUTION_ASSET}.zip" \
-  "${OPERATOR_BINARY_DISTRIBUTION_ASSET}.zip.asc" \
-  "${ADMISSION_BINARY_DISTRIBUTION_ASSET}.tar.gz" \
-  "${ADMISSION_BINARY_DISTRIBUTION_ASSET}.tar.gz.asc" \
-  "${ADMISSION_BINARY_DISTRIBUTION_ASSET}.zip" \
-  "${ADMISSION_BINARY_DISTRIBUTION_ASSET}.zip.asc" \
-  "${API_COMPATABILITY_REPORT}"
-
 
 BODY="Release version ${RELEASE_VERSION}"
 
@@ -258,53 +225,4 @@ gh pr create --head "${PREPARE_DEVELOPMENT_BRANCH}" \
              --repo "$(gh repo set-default -v)" \
              --label "${RELCAND_ID_LABEL}"
 
-# ── Verification: arm64 proxy image contains correct native libs ──────────────
-# The docker.yaml workflow was triggered by the tag push earlier in this script.
-# By the time we reach here (after mvn deploy + release prep), the workflow has
-# had significant time to run.  We poll for the run, wait for completion, then
-# spot-check that the linux/arm64 image layer contains aarch_64 Netty native
-# libraries and NO x86_64 ones.
-#
-# Defaults to quay.io/kroxylicious/proxy; override with -i for fork testing.
-if [[ -n "${PROXY_IMAGE_REPO}" ]]; then
-  echo "Waiting for docker workflow triggered by ${RELEASE_TAG} to appear..."
-  DOCKER_RUN_ID=""
-  for _attempt in 1 2 3 4 5 6 7 8 9 10; do
-    DOCKER_RUN_ID=$(gh run list \
-      --workflow docker.yaml \
-      --branch "${RELEASE_TAG}" \
-      --json databaseId \
-      --jq '.[0].databaseId // empty' 2>/dev/null || true)
-    [[ -n "${DOCKER_RUN_ID}" ]] && break
-    echo "  Run not yet visible (attempt ${_attempt}/10); retrying in 15s..."
-    sleep 15
-  done
-
-  if [[ -z "${DOCKER_RUN_ID}" ]]; then
-    echo "ERROR: Could not find docker workflow run for tag ${RELEASE_TAG}." >&2
-    echo "       Check the Actions tab and verify the arm64 image manually." >&2
-    exit 1
-  fi
-
-  echo "Found docker workflow run ${DOCKER_RUN_ID}; waiting for completion..."
-  gh run watch "${DOCKER_RUN_ID}" --exit-status
-
-  echo "Verifying arm64 proxy image native libraries in ${PROXY_IMAGE_REPO}:${RELEASE_VERSION}..."
-  _CONTAINER_ID=$(docker create --platform linux/arm64 "${PROXY_IMAGE_REPO}:${RELEASE_VERSION}")
-  _NATIVE_DIR=$(mktemp -d)
-  docker cp "${_CONTAINER_ID}:/opt/kroxylicious/libs/native/netty/." "${_NATIVE_DIR}/"
-  docker rm "${_CONTAINER_ID}" > /dev/null
-
-  _AARCH64_COUNT=$(find "${_NATIVE_DIR}" -name '*aarch_64*' | wc -l | tr -d ' ')
-  _X86_64_COUNT=$(find "${_NATIVE_DIR}" -name '*x86_64*' | wc -l | tr -d ' ')
-  rm -rf "${_NATIVE_DIR}"
-
-  if [[ "${_AARCH64_COUNT}" -gt 0 && "${_X86_64_COUNT}" -eq 0 ]]; then
-    echo "arm64 proxy image OK: ${_AARCH64_COUNT} aarch_64 native lib(s), no x86_64 libs."
-  else
-    echo "ERROR: arm64 native lib check failed (aarch_64=${_AARCH64_COUNT}, x86_64=${_X86_64_COUNT})." >&2
-    echo "       Use drop-release to clean up, then investigate the docker workflow." >&2
-    exit 1
-  fi
-fi
 

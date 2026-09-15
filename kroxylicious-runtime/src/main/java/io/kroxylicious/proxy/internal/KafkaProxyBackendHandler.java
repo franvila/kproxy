@@ -21,6 +21,13 @@ import io.kroxylicious.proxy.tag.VisibleForTesting;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
+import static io.kroxylicious.proxy.internal.util.NettyFutures.logFailure;
+
+/**
+ * Netty handler for the upstream (server-facing) side of the proxy. Feeds channel lifecycle,
+ * writability and read events from the connection to the Kafka broker into the
+ * {@link ServerConnectionStateMachine}, and writes requests towards the broker on its behalf.
+ */
 public class KafkaProxyBackendHandler extends ChannelInboundHandlerAdapter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaProxyBackendHandler.class);
@@ -152,6 +159,11 @@ public class KafkaProxyBackendHandler extends ChannelInboundHandlerAdapter {
      * Called by the {@link ServerConnectionStateMachine} to propagate an RPC to the upstream node.
      * @param msg the RPC to forward.
      */
+    // FutureReturnValueIgnored: serverCtx.voidPromise() is a VoidChannelPromise; by Netty's
+    // design, failures on a void-promise write are delivered to the pipeline's exceptionCaught
+    // rather than to a listener. Void promises are used deliberately on this hot data path to
+    // avoid per-write promise allocation.
+    @SuppressWarnings("FutureReturnValueIgnored")
     void forwardToServer(Object msg) {
         if (serverCtx == null) {
             serverConnectionStateMachine.onServerException(
@@ -221,6 +233,11 @@ public class KafkaProxyBackendHandler extends ChannelInboundHandlerAdapter {
             Channel outboundChannel = serverCtx.channel();
             if (outboundChannel.isActive()) {
                 outboundChannel.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener(ChannelFutureListener.CLOSE);
+            }
+            else {
+                // The outboundChannel can be open without being active during protocol negotiation.
+                // Ensure it gets closed.
+                outboundChannel.close().addListener(logFailure(LOGGER, "close inactive proxy -> broker channel"));
             }
         }
     }

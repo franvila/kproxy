@@ -16,8 +16,6 @@ import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Objects;
 
-import edu.umd.cs.findbugs.annotations.NonNull;
-
 import static java.net.http.HttpResponse.BodyHandlers.ofString;
 
 /**
@@ -30,11 +28,17 @@ public class ManagementClient implements Closeable {
 
     private final URI uri;
 
-    ManagementClient(@NonNull URI uri) {
+    ManagementClient(URI uri) {
         Objects.requireNonNull(uri, "uri");
         this.uri = uri;
     }
 
+    /**
+     * Performs an HTTP GET against the given endpoint of the admin HTTP interface.
+     *
+     * @param endpoint the endpoint path, relative to the admin interface's base URI
+     * @return the HTTP response
+     */
     public HttpResponse<String> getFromAdminEndpoint(String endpoint) {
         try {
             HttpRequest request = HttpRequest.newBuilder(uri.resolve(endpoint)).GET().build();
@@ -54,13 +58,16 @@ public class ManagementClient implements Closeable {
      *
      * @return list of metrics.
      */
-    @NonNull
     public List<SimpleMetric> scrapeMetrics() {
         var text = getFromAdminEndpoint(METRICS).body();
         return SimpleMetric.parse(text);
     }
 
-    @NonNull
+    /**
+     * The base URI of the admin HTTP interface.
+     *
+     * @return the base URI
+     */
     public URI getUri() {
         return uri;
     }

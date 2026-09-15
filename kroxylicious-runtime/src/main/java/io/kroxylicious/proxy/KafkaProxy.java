@@ -14,14 +14,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.apache.kafka.common.protocol.ApiKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,7 +48,7 @@ import io.netty.channel.uring.IoUringIoHandler;
 import io.netty.channel.uring.IoUringServerSocketChannel;
 import io.netty.util.concurrent.Future;
 
-import io.kroxylicious.proxy.bootstrap.FilterChainFactory;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
 import io.kroxylicious.proxy.config.Configuration;
 import io.kroxylicious.proxy.config.IllegalConfigurationException;
 import io.kroxylicious.proxy.config.MicrometerDefinition;
@@ -63,12 +65,12 @@ import io.kroxylicious.proxy.internal.VirtualClusterRegistry;
 import io.kroxylicious.proxy.internal.admin.ManagementInitializer;
 import io.kroxylicious.proxy.internal.config.Features;
 import io.kroxylicious.proxy.internal.net.DefaultNetworkBindingOperationProcessor;
-import io.kroxylicious.proxy.internal.net.Endpoint;
 import io.kroxylicious.proxy.internal.net.EndpointRegistry;
 import io.kroxylicious.proxy.internal.net.NetworkBindingOperationProcessor;
+import io.kroxylicious.proxy.internal.net.ProxyNodeId;
 import io.kroxylicious.proxy.internal.reload.ConfigurationReloadOrchestrator;
 import io.kroxylicious.proxy.internal.util.Metrics;
-import io.kroxylicious.proxy.model.VirtualClusterModel;
+import io.kroxylicious.proxy.plugin.PluginConfigurationException;
 import io.kroxylicious.proxy.reload.ReconfigureResult;
 import io.kroxylicious.proxy.service.HostPort;
 import io.kroxylicious.proxy.tag.VisibleForTesting;
@@ -77,6 +79,13 @@ import edu.umd.cs.findbugs.annotations.Nullable;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * Entry point for running the proxy as an embedded component. Owns the proxy's lifecycle
+ * ({@link #startup()}, {@link #shutdown()}), the Netty event loop groups and port bindings,
+ * the virtual cluster registry, the optional management (metrics/admin) listener, and dynamic
+ * reconfiguration via {@link #reconfigure(Configuration)}. Instances are single-use: once
+ * stopped, a proxy cannot be restarted.
+ */
 public final class KafkaProxy implements AutoCloseable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KafkaProxy.class);
@@ -146,23 +155,79 @@ public final class KafkaProxy implements AutoCloseable {
         }
     }
 
+    private enum LifecycleState {
+        NEW {
+            @Override
+            boolean canTransitionTo(LifecycleState target) {
+                return switch (target) {
+                    case STARTING, STOPPING -> true;
+                    case NEW, STARTED, STOPPED -> false;
+                };
+            }
+        },
+        STARTING {
+            @Override
+            boolean canTransitionTo(LifecycleState target) {
+                return switch (target) {
+                    case STARTED, STOPPING -> true;
+                    case NEW, STARTING, STOPPED -> false;
+                };
+            }
+        },
+        STARTED {
+            @Override
+            boolean canTransitionTo(LifecycleState target) {
+                return switch (target) {
+                    case STOPPING -> true;
+                    case NEW, STARTING, STARTED, STOPPED -> false;
+                };
+            }
+        },
+        STOPPING {
+            @Override
+            boolean canTransitionTo(LifecycleState target) {
+                return switch (target) {
+                    case STOPPED -> true;
+                    case NEW, STARTING, STARTED, STOPPING -> false;
+                };
+            }
+        },
+        STOPPED {
+            @Override
+            boolean canTransitionTo(LifecycleState target) {
+                return false;
+            }
+        };
+
+        abstract boolean canTransitionTo(LifecycleState target);
+    }
+
     private final Configuration config;
     private final @Nullable ManagementConfiguration managementConfiguration;
     private final List<MicrometerDefinition> micrometerConfig;
-    private final List<VirtualClusterModel> virtualClusterModels;
-    private final AtomicBoolean running = new AtomicBoolean();
+    private final AtomicReference<LifecycleState> state = new AtomicReference<>(LifecycleState.NEW);
     private final CompletableFuture<Void> shutdown = new CompletableFuture<>();
     private final NetworkBindingOperationProcessor bindingOperationProcessor = new DefaultNetworkBindingOperationProcessor();
     private final EndpointRegistry endpointRegistry = new EndpointRegistry(bindingOperationProcessor);
     private final PluginFactoryRegistry pfr;
     private final VirtualClusterRegistry virtualClusterRegistry;
     private @Nullable MeterRegistries meterRegistries;
-    private @Nullable FilterChainFactory filterChainFactory;
 
     private @Nullable ConfigurationReloadOrchestrator reconfigureOrchestrator;
     private @Nullable EventGroupConfig managementEventGroup;
     private @Nullable EventGroupConfig proxyEventGroup;
 
+    /**
+     * Creates a proxy for the given configuration. The configuration is validated against the
+     * enabled features and the virtual cluster models (including their filter chains) are built
+     * eagerly; the proxy does not accept connections until {@link #startup()} is called.
+     *
+     * @param pfr the plugin factory registry used to resolve filter and other plugins
+     * @param config the proxy configuration
+     * @param features the enabled feature set used to validate the configuration
+     * @throws IllegalConfigurationException if the configuration is not supported by the enabled features
+     * @throws LifecycleException if a filter factory fails to initialise
+     */
     public KafkaProxy(PluginFactoryRegistry pfr, Configuration config, Features features) {
         this(pfr, config, features, defaultRegistry(config, pfr));
     }
@@ -172,26 +237,38 @@ public final class KafkaProxy implements AutoCloseable {
         this.pfr = requireNonNull(pfr);
         this.config = validate(requireNonNull(config), requireNonNull(features));
         this.virtualClusterRegistry = requireNonNull(virtualClusterRegistry);
-        this.virtualClusterModels = virtualClusterRegistry.virtualClusterModels();
         this.managementConfiguration = config.management();
         this.micrometerConfig = config.getMicrometer();
     }
 
     private static VirtualClusterRegistry defaultRegistry(Configuration config, PluginFactoryRegistry pfr) {
-        var models = config.virtualClusterModel(pfr);
-        return new VirtualClusterRegistry(models, (clusterName, cause) -> {
-            if (cause.isPresent()) {
-                STARTUP_SHUTDOWN_LOGGER.atWarn()
-                        .addKeyValue("virtualCluster", clusterName)
-                        .addKeyValue("error", cause.get().getMessage())
-                        .log("Virtual cluster reached terminal stopped state due to failure, proxy shutdown required");
-            }
-            else {
-                STARTUP_SHUTDOWN_LOGGER.atInfo()
-                        .addKeyValue("virtualCluster", clusterName)
-                        .log("Virtual cluster stopped");
-            }
-        });
+        // VCM construction triggers per-VC FilterChainFactory construction, which calls each
+        // filter factory's initialize(). A filter init failure surfaces here as a
+        // PluginConfigurationException — wrap it as a LifecycleException so callers that go
+        // through startup-failure handling still see the same exception type they did before
+        // FCF construction moved into the VCM constructor.
+        try {
+            var models = config.virtualClusterModel(pfr);
+            return new VirtualClusterRegistry(
+                    models,
+                    (cfg, clusterName) -> cfg.virtualClusterModel(pfr, clusterName),
+                    (clusterName, cause) -> {
+                        if (cause.isPresent()) {
+                            STARTUP_SHUTDOWN_LOGGER.atWarn()
+                                    .addKeyValue("virtualCluster", clusterName)
+                                    .addKeyValue("error", cause.get().getMessage())
+                                    .log("Virtual cluster reached terminal stopped state due to failure, proxy shutdown required");
+                        }
+                        else {
+                            STARTUP_SHUTDOWN_LOGGER.atInfo()
+                                    .addKeyValue("virtualCluster", clusterName)
+                                    .log("Virtual cluster stopped");
+                        }
+                    });
+        }
+        catch (PluginConfigurationException e) {
+            throw new LifecycleException("Startup completed exceptionally", e);
+        }
     }
 
     @VisibleForTesting
@@ -219,32 +296,33 @@ public final class KafkaProxy implements AutoCloseable {
         return proxyEventGroup;
     }
 
+    @VisibleForTesting
+    CompletableFuture<Void> shutdownFuture() {
+        return shutdown;
+    }
+
     /**
      * Starts this proxy.
-     * @return This proxy.
+     * @return a future that completes when the proxy stops (normally or exceptionally).
      */
-    @SuppressWarnings("java:S5738")
-    public KafkaProxy startup() {
-        if (running.getAndSet(true)) {
-            throw new IllegalStateException("This proxy is already running");
-        }
-        try {
-            if (!TESTED_JRE_VERSIONS.contains(JRE_FEATURE_VERSION)) {
-                String versionStatus = "untested";
-                String deprecatedMessage = "";
-
-                if (JRE_FEATURE_VERSION < TESTED_JRE_VERSIONS.first()) {
-                    versionStatus = "deprecated";
-                    deprecatedMessage = " The ability to run Kroxylicious on JRE %s will be removed in a future release.".formatted(JRE_FEATURE_VERSION);
-                }
-
-                STARTUP_SHUTDOWN_LOGGER.atWarn()
-                        .addKeyValue("versionStatus", versionStatus)
-                        .addKeyValue("jreFeatureVersion", JRE_FEATURE_VERSION)
-                        .addKeyValue("testedJreVersion", TESTED_JRE_VERSIONS.first())
-                        .log("Detected JRE version, running Kroxylicious is only tested on LTS releases, if you find any issues, please try to re-create them on one of the tested JREs"
-                                + deprecatedMessage);
+    public CompletableFuture<Void> startup() {
+        // The CAS is the primary guard against concurrent startup; the STOPPING/STOPPED
+        // check is belt-and-braces since the real concurrency guard is in shutdown().
+        return transitionTo(LifecycleState.STARTING, this::doStartup, current -> {
+            if (current == LifecycleState.STOPPING || current == LifecycleState.STOPPED) {
+                throw new IllegalStateException("KafkaProxy is not restartable");
             }
+            return shutdown; // STARTING or STARTED — idempotent
+        });
+    }
+
+    private CompletableFuture<Void> doStartup() {
+        // Read the current model set fresh from the registry rather than from a field captured at
+        // construction time — keeps startup() consistent with the registry-as-source-of-truth
+        // invariant used by shutdown().
+        var virtualClusterModels = virtualClusterRegistry.virtualClusterModels();
+        try {
+            logJdkInfo();
 
             STARTUP_SHUTDOWN_LOGGER.atInfo()
                     .log("Kroxylicious is starting");
@@ -266,36 +344,45 @@ public final class KafkaProxy implements AutoCloseable {
 
             var overrideMap = getApiKeyMaxVersionOverride(config);
             ApiVersionsServiceImpl apiVersionsService = new ApiVersionsServiceImpl(overrideMap);
-            this.filterChainFactory = new FilterChainFactory(pfr, config.filterDefinitions());
             this.reconfigureOrchestrator = new ConfigurationReloadOrchestrator(
-                    config, virtualClusterRegistry, endpointRegistry, pfr,
+                    config, virtualClusterRegistry, endpointRegistry,
                     ConfigurationReloadOrchestrator.defaultDetectors());
 
             Optional<NettySettings> proxyNettySettings = getNettySettings(config, NetworkDefinition::proxy);
             var proxyProtocolMode = config.proxyProtocolMode();
             var tlsServerBootstrap = buildServerBootstrap(proxyEventGroup,
-                    new KafkaProxyInitializer(filterChainFactory, pfr, true, endpointRegistry, endpointRegistry, proxyProtocolMode,
-                            apiVersionsService, proxyNettySettings, virtualClusterRegistry));
+                    new KafkaProxyInitializer(pfr, true, endpointRegistry, endpointRegistry,
+                            proxyProtocolMode, apiVersionsService,
+                            proxyNettySettings, virtualClusterRegistry));
             var plainServerBootstrap = buildServerBootstrap(proxyEventGroup,
-                    new KafkaProxyInitializer(filterChainFactory, pfr, false, endpointRegistry, endpointRegistry, proxyProtocolMode,
-                            apiVersionsService, proxyNettySettings, virtualClusterRegistry));
+                    new KafkaProxyInitializer(pfr, false, endpointRegistry, endpointRegistry,
+                            proxyProtocolMode, apiVersionsService,
+                            proxyNettySettings, virtualClusterRegistry));
 
             bindingOperationProcessor.start(plainServerBootstrap, tlsServerBootstrap);
 
-            // TODO: startup/shutdown should return a completionstage
             CompletableFuture.allOf(
                     Stream.concat(Stream.of(managementFuture),
                             virtualClusterModels.stream()
                                     .flatMap(vc -> vc.gateways().values().stream())
-                                    .map(vcl -> endpointRegistry.registerVirtualCluster(vcl).toCompletableFuture()))
+                                    .map(vcl -> endpointRegistry.registerVirtualCluster(vcl)
+                                            .thenRun(() -> vcl.bindPortResolver(vn -> endpointRegistry.resolvePort(vn).toCompletableFuture().join()))
+                                            .toCompletableFuture()))
                             .toArray(CompletableFuture[]::new))
                     .join();
 
-            virtualClusterModels.forEach(model -> virtualClusterRegistry.initializationSucceeded(model.getClusterName()));
+            virtualClusterModels.forEach(model -> {
+                model.logVirtualClusterSummary();
+                virtualClusterRegistry.initializationSucceeded(model.getClusterName());
+            });
 
             STARTUP_SHUTDOWN_LOGGER.atInfo()
                     .log("Kroxylicious is started");
-            return this;
+            transitionTo(LifecycleState.STARTED, () -> {
+            }, lifecycleState -> STARTUP_SHUTDOWN_LOGGER.atInfo()
+                    .addKeyValue("state", lifecycleState)
+                    .log("Shutdown initiated concurrently with final startup transition"));
+            return shutdown;
         }
         catch (RuntimeException e) {
             STARTUP_SHUTDOWN_LOGGER.atError()
@@ -305,10 +392,68 @@ public final class KafkaProxy implements AutoCloseable {
             // rather than relying on the caller to call shutdown() separately. Currently the callback only logs.
             // All VCs are failed with the same exception because startup is all-or-nothing:
             // initializationSucceeded is only called after all VCs register successfully (line 263).
+            var wrapped = new LifecycleException("Startup completed exceptionally", e);
             virtualClusterModels.forEach(model -> virtualClusterRegistry.initializationFailed(model.getClusterName(), e));
-            shutdown();
-            throw new LifecycleException("Startup completed exceptionally", e);
+            shutdown.completeExceptionally(wrapped); // claim the future before doShutdown() can complete it normally
+            transitionTo(LifecycleState.STOPPING, this::doShutdown, lifecycleState -> {
+            });
+            throw wrapped;
         }
+    }
+
+    private static void logJdkInfo() {
+        if (!TESTED_JRE_VERSIONS.contains(JRE_FEATURE_VERSION)) {
+            String versionStatus = "untested";
+            String deprecatedMessage = "";
+
+            if (JRE_FEATURE_VERSION < TESTED_JRE_VERSIONS.first()) {
+                versionStatus = "deprecated";
+                deprecatedMessage = " The ability to run Kroxylicious on JRE %s will be removed in a future release.".formatted(JRE_FEATURE_VERSION);
+            }
+
+            STARTUP_SHUTDOWN_LOGGER.atWarn()
+                    .addKeyValue("versionStatus", versionStatus)
+                    .addKeyValue("jreFeatureVersion", JRE_FEATURE_VERSION)
+                    .addKeyValue("testedJreVersion", TESTED_JRE_VERSIONS.first())
+                    .log("Detected JRE version, running Kroxylicious is only tested on LTS releases, if you find any issues, please try to re-create them on one of the tested JREs"
+                            + deprecatedMessage);
+        }
+    }
+
+    private void transitionTo(LifecycleState targetState,
+                              Runnable onTransition,
+                              Consumer<LifecycleState> onNoTransition) {
+        this.transitionTo(targetState, () -> {
+            onTransition.run();
+            return null;
+        }, lifecycleState -> {
+            onNoTransition.accept(lifecycleState);
+            return null;
+        });
+    }
+
+    /**
+     *
+     * @param targetState target state
+     * @param onTransition executed if this call transitions to the targetState
+     * @return the last observed state, could be the targetState if successfully transitioned, else last
+     */
+    private <T> T transitionTo(LifecycleState targetState,
+                               Supplier<T> onTransition,
+                               Function<LifecycleState, T> onNoTransition) {
+        boolean transitioned = false;
+        while (!transitioned) {
+            LifecycleState currentState = state.get();
+            if (currentState == targetState) {
+                // something else has already transitioned to this state
+                return onNoTransition.apply(currentState);
+            }
+            if (!currentState.canTransitionTo(targetState)) {
+                return onNoTransition.apply(currentState);
+            }
+            transitioned = state.compareAndSet(currentState, targetState);
+        }
+        return onTransition.get();
     }
 
     private static Optional<NettySettings> getNettySettings(Configuration configuration, Function<NetworkDefinition, NettySettings> settingsSupplier) {
@@ -383,17 +528,6 @@ public final class KafkaProxy implements AutoCloseable {
     }
 
     /**
-     * Blocks while this proxy is running.
-     * This should only be called after a successful call to {@link #startup()}.
-     */
-    public void block() {
-        if (!running.get()) {
-            throw new IllegalStateException("This proxy is not running");
-        }
-        shutdown.join();
-    }
-
-    /**
      * Apply the given configuration to this running proxy, restarting only the virtual clusters
      * whose effective configuration differs from the current running state. Unaffected clusters
      * continue serving traffic throughout the reconfigure.
@@ -410,7 +544,7 @@ public final class KafkaProxy implements AutoCloseable {
      */
     public CompletableFuture<ReconfigureResult> reconfigure(Configuration newConfig) {
         Objects.requireNonNull(newConfig, "newConfig");
-        if (!running.get()) {
+        if (state.get() != LifecycleState.STARTED) {
             throw new IllegalStateException("This proxy is not running");
         }
         ConfigurationReloadOrchestrator orchestrator = reconfigureOrchestrator;
@@ -421,73 +555,106 @@ public final class KafkaProxy implements AutoCloseable {
     }
 
     /**
-     * Shuts down a running proxy. The sequence is:
-     * <ol>
-     *   <li>Unbind ports — prevents new connections from arriving</li>
-     *   <li>Drain existing connections gracefully via {@code shutdownAllClusters()}</li>
-     *   <li>Shut down Netty event groups — force-closes any connections that did not drain in time</li>
-     * </ol>
+     * Shuts down a running proxy. Idempotent: safe to call from any thread, including JVM shutdown hooks,
+     * and safe to call before {@link #startup()} or after already stopped.
+     *
+     * @return a future that completes when shutdown is complete, identically to the future returned by {@link #startup()}
      */
-    public void shutdown() {
-        if (!running.getAndSet(false)) {
-            throw new IllegalStateException("This proxy is not running");
-        }
+    public CompletableFuture<Void> shutdown() {
+        transitionTo(LifecycleState.STOPPING, this::doShutdown, lifecycleState -> {
+        });
+        return shutdown;
+    }
+
+    private void doShutdown() {
+        Exception shutdownFailure = null;
+        List<Throwable> closeFailures = new ArrayList<>();
         try {
             STARTUP_SHUTDOWN_LOGGER.atInfo()
                     .log("Shutting down");
 
-            // Unbind ports first so no new connections can arrive after the drain snapshot
-            // is taken. endpointRegistry.shutdown() closes only the server (acceptor) socket —
-            // it does NOT disconnect existing client connections.
-            endpointRegistry.shutdown().handle((u, t) -> {
-                bindingOperationProcessor.close();
-                if (t != null) {
-                    STARTUP_SHUTDOWN_LOGGER.atWarn()
-                            .setCause(t)
-                            .log("Shutdown future completed exceptionally");
-                    throw new LifecycleException("Shutdown future completed exceptionally", t);
-                }
-                return null;
-            }).toCompletableFuture().join();
+            // Unbind ports first so no new connections can arrive after the drain snapshot is taken —
+            // existing connections are unaffected and will be drained in the next step.
+            unbindPorts();
 
-            try {
-                virtualClusterRegistry.shutdownAllClusters();
-                STARTUP_SHUTDOWN_LOGGER.atInfo().log("All connections drained successfully");
-            }
-            catch (Exception e) {
-                STARTUP_SHUTDOWN_LOGGER.atWarn()
-                        .addKeyValue("error", e.getMessage())
-                        .log("Connection drain completed with errors — Netty shutdown will force-close remaining");
-            }
+            closeFailures.addAll(shutdownVirtualClusters());
 
-            var closeFutures = new ArrayList<Future<?>>();
-            if (proxyEventGroup != null) {
-                closeFutures.addAll(proxyEventGroup.shutdownGracefully());
-            }
-            if (managementEventGroup != null) {
-                closeFutures.addAll(managementEventGroup.shutdownGracefully());
-            }
-            closeFutures.forEach(Future::syncUninterruptibly);
+            shutdownNetty();
 
-            if (filterChainFactory != null) {
-                filterChainFactory.close();
-            }
             if (meterRegistries != null) {
                 meterRegistries.close();
             }
+
+            // VCR.close() shuts down its lifecycle executor.
+            virtualClusterRegistry.close();
+        }
+        catch (Exception e) {
+            shutdownFailure = e;
         }
         finally {
-            // Close virtual cluster models to release TLS credential supplier resources
-            virtualClusterModels.forEach(VirtualClusterModel::close);
+            // No explicit forEach close on virtualClusterModels — the registry's
+            // shutdownAllClusters() above drives each lifecycle to Stopped and closes its
+            // model along the way (see VirtualClusterRegistry#closeModel). The registry is
+            // the single source of truth for per-VC resource lifecycle.
+            transitionTo(LifecycleState.STOPPED, () -> {
+            }, lifecycleState -> LOGGER.atWarn()
+                    .addKeyValue("state", lifecycleState)
+                    .log("Unexpected state during shutdown, expected STOPPING"));
             managementEventGroup = null;
             proxyEventGroup = null;
             meterRegistries = null;
-            filterChainFactory = null;
             reconfigureOrchestrator = null;
-            shutdown.complete(null);
+            if (shutdownFailure != null) {
+                closeFailures.forEach(shutdownFailure::addSuppressed);
+                shutdown.completeExceptionally(shutdownFailure);
+            }
+            else if (!closeFailures.isEmpty()) {
+                var primary = closeFailures.get(0);
+                closeFailures.subList(1, closeFailures.size()).forEach(primary::addSuppressed);
+                shutdown.completeExceptionally(primary);
+            }
+            else {
+                shutdown.complete(null);
+            }
             LOGGER.atInfo()
                     .log("Shut down completed");
         }
+    }
+
+    private void unbindPorts() {
+        endpointRegistry.shutdown().handle((u, t) -> {
+            bindingOperationProcessor.close();
+            if (t != null) {
+                STARTUP_SHUTDOWN_LOGGER.atWarn()
+                        .setCause(t)
+                        .log("Failed to unbind ports");
+            }
+            return null;
+        }).toCompletableFuture().join();
+    }
+
+    private List<Throwable> shutdownVirtualClusters() {
+        var failures = virtualClusterRegistry.shutdownAllClusters();
+        if (failures.isEmpty()) {
+            STARTUP_SHUTDOWN_LOGGER.atInfo().log("All connections drained successfully");
+        }
+        else {
+            STARTUP_SHUTDOWN_LOGGER.atWarn()
+                    .addKeyValue("error", failures.stream().map(Throwable::getMessage).collect(java.util.stream.Collectors.joining(", ")))
+                    .log("Virtual cluster shutdown completed with close failures — Netty shutdown will force-close remaining connections");
+        }
+        return failures;
+    }
+
+    private void shutdownNetty() {
+        var closeFutures = new ArrayList<Future<?>>();
+        if (proxyEventGroup != null) {
+            closeFutures.addAll(proxyEventGroup.shutdownGracefully());
+        }
+        if (managementEventGroup != null) {
+            closeFutures.addAll(managementEventGroup.shutdownGracefully());
+        }
+        closeFutures.forEach(Future::syncUninterruptibly);
     }
 
     /**
@@ -502,23 +669,50 @@ public final class KafkaProxy implements AutoCloseable {
     }
 
     /**
-     * Returns the actual local port that the proxy is listening on for the given bind address and configured port.
-     * Useful when the configured port is {@link EndpointRegistry#OS_ASSIGNED_PORT} (meaning the OS assigns an ephemeral port at startup).
-     * Must only be called after a successful {@link #startup()}.
+     * Returns the actual advertised bootstrap address for the given virtual cluster and gateway.
+     * When the gateway was configured with port 0 (OS-assigned), this returns the actual bound port
+     * rather than the configured port. Must only be called after a successful {@link #startup()}.
      *
-     * @param bindAddress the bind address used in the proxy configuration, or {@code null} for any-address bindings
-     * @param port the port number used in the proxy configuration (e.g. {@link EndpointRegistry#OS_ASSIGNED_PORT} for OS-assigned)
-     * @return the actual local port the proxy is listening on
+     * @param virtualClusterName name of the virtual cluster
+     * @param gatewayName name of the gateway within that cluster
+     * @return the bootstrap address as reported by the running gateway
+     * @throws IllegalArgumentException if the virtual cluster or gateway is not found
      */
-    @VisibleForTesting
-    int listeningPort(@Nullable String bindAddress, int port) {
-        return endpointRegistry.localPortFor(Endpoint.createEndpoint(Optional.ofNullable(bindAddress), port, false));
+    public HostPort getBootstrapAddress(String virtualClusterName, String gatewayName) {
+        var model = virtualClusterRegistry.modelFor(virtualClusterName);
+        if (model == null) {
+            throw new IllegalArgumentException("Virtual cluster not found: " + virtualClusterName);
+        }
+        var gateway = model.gateways().get(gatewayName);
+        if (gateway == null) {
+            throw new IllegalArgumentException("Gateway '" + gatewayName + "' not found in virtual cluster '" + virtualClusterName + "'");
+        }
+        var address = gateway.getClusterBootstrapAddress();
+        if (address.port() == 0) {
+            int resolvedPort = endpointRegistry.resolvePort(new ProxyNodeId.Bootstrap(gateway)).toCompletableFuture().join();
+            return new HostPort(address.host(), resolvedPort);
+        }
+        return address;
     }
 
+    /**
+     * Shuts down the proxy and blocks until shutdown has fully completed, guaranteeing that
+     * bound ports are released before this method returns. A shutdown failure is logged at
+     * ERROR rather than propagated, so this method is safe to call from try-with-resources
+     * after an explicit {@link #shutdown()} without risk of a second exception. Idempotent.
+     */
     @Override
-    public void close() throws Exception {
-        if (running.get()) {
-            shutdown();
+    public void close() {
+        try {
+            shutdown().get();
+        }
+        catch (ExecutionException e) {
+            STARTUP_SHUTDOWN_LOGGER.atError()
+                    .setCause(e.getCause())
+                    .log("Proxy shutdown completed with a failure");
+        }
+        catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

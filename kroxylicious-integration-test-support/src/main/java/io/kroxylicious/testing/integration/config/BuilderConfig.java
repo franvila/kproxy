@@ -14,6 +14,9 @@ import io.sundr.builder.annotations.ExternalBuildables;
 @ExternalBuildables(editableEnabled = false, generateBuilderPackage = true, builderPackage = BuilderConfig.TARGET_CONFIG_PACKAGE, value = {
         "io.kroxylicious.proxy.config.Configuration",
         "io.kroxylicious.proxy.config.TargetCluster",
+        "io.kroxylicious.proxy.config.ClusterDefinition",
+        "io.kroxylicious.proxy.config.RouterDefinition",
+        "io.kroxylicious.proxy.config.RouteDefinition",
         "io.kroxylicious.proxy.config.VirtualCluster",
         "io.kroxylicious.proxy.config.VirtualClusterGateway",
         "io.kroxylicious.proxy.config.PortIdentifiesNodeIdentificationStrategy",
@@ -35,6 +38,9 @@ import io.sundr.builder.annotations.ExternalBuildables;
         "io.kroxylicious.proxy.config.NettySettings"
 })
 public final class BuilderConfig {
+    /**
+     * The package into which Sundrio generates the builder support classes.
+     */
     public static final String TARGET_CONFIG_PACKAGE = "io.kroxylicious.proxy.config.model";
 
     private BuilderConfig() {

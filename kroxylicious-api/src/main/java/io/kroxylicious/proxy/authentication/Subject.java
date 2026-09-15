@@ -6,9 +6,10 @@
 
 package io.kroxylicious.proxy.authentication;
 
-import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
+
+import io.kroxylicious.identity.Identity;
+import io.kroxylicious.identity.SingularPrincipals;
 
 /**
  * <p>Represents an actor in the system.
@@ -25,61 +26,40 @@ import java.util.stream.Collectors;
  * </ul>
  *
  * @param principals the set of identifiers associated with this subject.
+ * @deprecated Use {@link io.kroxylicious.identity.Subject} instead. Will be removed at 1.0.
  */
-public record Subject(Set<Principal> principals) {
+@Deprecated(since = "0.25.0", forRemoval = true)
+@SuppressWarnings({ "java:S5738", "removal" })
+public record Subject(Set<Principal> principals) implements Identity {
 
     private static final Subject ANONYMOUS = new Subject(Set.of());
 
+    /**
+     * Returns the anonymous subject (no principals).
+     * @return the anonymous subject
+     */
     public static Subject anonymous() {
         return ANONYMOUS;
     }
 
+    /**
+     * Creates a subject from the given principals.
+     * @param principals the principals
+     */
     public Subject(Principal... principals) {
         this(Set.of(principals));
     }
 
+    /**
+     * Creates a subject from the given principal set. Validates that non-empty subjects have exactly one {@link User} principal.
+     * @param principals the principals
+     */
     public Subject(Set<Principal> principals) {
-        principals.stream()
-                .collect(Collectors.groupingBy(Object::getClass))
-                .forEach((principalClass, instances) -> {
-                    if (principalClass.isAnnotationPresent(Unique.class) && instances.size() > 1) {
-                        throw new IllegalArgumentException(
-                                instances.size() + " principals of " + principalClass + " were found, but " + principalClass + " is annotated with " + Unique.class);
-                    }
-
-                });
-        Optional<User> user = uniquePrincipalOfType(principals, User.class);
-        if (!principals.isEmpty() && user.isEmpty()) {
+        SingularPrincipals.validateUniqueness(principals);
+        this.principals = Set.copyOf(principals);
+        if (!this.principals.isEmpty() && uniquePrincipalOfType(User.class).isEmpty()) {
             throw new IllegalArgumentException("A subject with non-empty principals must have exactly one " + User.class.getName() + " principal.");
         }
-        this.principals = Set.copyOf(principals);
-    }
-
-    public <P extends Principal> Optional<P> uniquePrincipalOfType(Class<P> uniquePrincipalType) {
-        return uniquePrincipalOfType(this.principals, uniquePrincipalType);
-    }
-
-    public boolean isAnonymous() {
-        return this.principals.isEmpty();
-    }
-
-    private static <P extends Principal> Optional<P> uniquePrincipalOfType(Set<Principal> principals, Class<P> uniquePrincipalType) {
-        if (uniquePrincipalType.isAnnotationPresent(Unique.class)) {
-            return principals.stream()
-                    .filter(uniquePrincipalType::isInstance)
-                    .map(uniquePrincipalType::cast)
-                    .findFirst();
-        }
-        else {
-            throw new IllegalArgumentException(uniquePrincipalType + " is not annotated with " + Unique.class);
-        }
-    }
-
-    public <P extends Principal> Set<P> allPrincipalsOfType(Class<P> principalType) {
-        return this.principals.stream()
-                .filter(principalType::isInstance)
-                .map(principalType::cast)
-                .collect(Collectors.toSet());
     }
 
 }

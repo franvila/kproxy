@@ -13,7 +13,7 @@
     <parent>
         <groupId>io.kroxylicious</groupId>
         <artifactId>kroxylicious-kubernetes-parent</artifactId>
-        <version>0.22.0-SNAPSHOT</version>
+        <version>0.25.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>kroxylicious-operator</artifactId>
@@ -21,27 +21,20 @@
     <description>An operator for running the Kroxylicious Proxy on Kubernetes</description>
 
     <properties>
-        <josdk.version>5.3.4</josdk.version>
-        <prometheus-metrics.version>1.6.1</prometheus-metrics.version>
+        <prometheus-metrics.version>1.8.0</prometheus-metrics.version>
         <io.kroxylicious.operator.image.name>quay.io/kroxylicious/operator:${project.version}</io.kroxylicious.operator.image.name>
         <io.kroxylicious.operator.image.archive>target/kroxylicious-operator.img.tar.gz</io.kroxylicious.operator.image.archive>
         <sonar.projectName>Kroxylicious Operator</sonar.projectName>
         <sonar.projectkey>kroxylicious_kroxylicious</sonar.projectkey>
         <!-- Error Prone disabled - fabric8 builders not compatible with -XDcompilePolicy=simple -->
         <errorprone.skip>true</errorprone.skip>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <central.publishing.skip>true</central.publishing.skip>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- note, we're inheriting the jackson & micrometer BOMs from our parent pom -->
-
-            <dependency>
-                <groupId>io.javaoperatorsdk</groupId>
-                <artifactId>operator-framework-bom</artifactId>
-                <version>${josdk.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
+            <!-- note, we're inheriting the jackson, micrometer & JOSDK BOMs from our parent pom -->
             <dependency>
                 <groupId>io.fabric8</groupId>
                 <artifactId>kubernetes-client-bom</artifactId>

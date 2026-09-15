@@ -13,7 +13,7 @@
     <parent>
         <artifactId>kroxylicious-parent</artifactId>
         <groupId>io.kroxylicious</groupId>
-        <version>0.22.0-SNAPSHOT</version>
+        <version>0.25.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>kroxylicious-integration-tests</artifactId>
@@ -21,9 +21,9 @@
     <description>Integration tests where the runtime and filters are tested end-to-end with a real Kafka cluster.</description>
 
     <properties>
-        <java.version>21</java.version>
-        <java.test.version>21</java.test.version>
         <errorprone.skip>true</errorprone.skip>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <central.publishing.skip>true</central.publishing.skip>
     </properties>
 
     <dependencies>
@@ -32,6 +32,11 @@
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-identity-api</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -71,6 +76,16 @@
         </dependency>
         <dependency>
             <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-sasl-termination</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-scram-credential-store-provider-file</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-kms-provider-kroxylicious-inmemory</artifactId>
             <scope>test</scope>
         </dependency>
@@ -102,6 +117,11 @@
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-kms-provider-azure-key-vault-kms-test-support</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-kms-provider-thales-ciphertrust-manager-test-support</artifactId>
             <scope>runtime</scope>
         </dependency>
         <dependency>
@@ -141,6 +161,11 @@
         </dependency>
         <dependency>
             <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-protocol-logger</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-authorizer-acl</artifactId>
             <scope>test</scope>
         </dependency>
@@ -168,6 +193,11 @@
         <dependency>
             <groupId>io.kroxylicious</groupId>
             <artifactId>kroxylicious-kafka-message-tools</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.kroxylicious</groupId>
+            <artifactId>kroxylicious-kafka-message-json</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -305,6 +335,11 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.sambarker</groupId>
+            <artifactId>logsquelcher</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

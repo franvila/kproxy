@@ -62,8 +62,8 @@ public class WebIdentityCredentialsProvider extends AbstractRefreshingCredential
     private static final TypeReference<StsErrorEnvelope> ERROR_TYPE_REF = new TypeReference<>() {
     };
 
-    private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(10);
-    private static final Duration HTTP_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    private static final Duration HTTP_REQUEST_TIMEOUT = Duration.ofSeconds(20);
+    private static final Duration HTTP_CONNECT_TIMEOUT = Duration.ofSeconds(20);
     private static final String STS_API_VERSION = "2011-06-15";
     private static final String STS_ACTION = "AssumeRoleWithWebIdentity";
     private static final int MAX_SESSION_NAME_LENGTH = 64;
@@ -175,6 +175,11 @@ public class WebIdentityCredentialsProvider extends AbstractRefreshingCredential
                 .build();
     }
 
+    @VisibleForTesting
+    HttpClient getHttpClient() {
+        return client;
+    }
+
     @Override
     protected CompletionStage<AssumedRoleCredentials> fetchCredentials() {
         var token = readWebIdentityToken();
@@ -220,7 +225,8 @@ public class WebIdentityCredentialsProvider extends AbstractRefreshingCredential
         }
     }
 
-    private HttpRequest createAssumeRoleRequest(String webIdentityToken) {
+    @VisibleForTesting
+    HttpRequest createAssumeRoleRequest(String webIdentityToken) {
         var form = new StringBuilder()
                 .append("Action=").append(STS_ACTION)
                 .append("&Version=").append(STS_API_VERSION)
@@ -296,6 +302,11 @@ public class WebIdentityCredentialsProvider extends AbstractRefreshingCredential
 
     /**
      * The temporary credentials returned by STS AssumeRoleWithWebIdentity.
+     *
+     * @param accessKeyId AWS access key id.
+     * @param secretAccessKey AWS secret access key.
+     * @param sessionToken temporary session token associated with the access key.
+     * @param expiration instant at which the credentials expire.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record AssumedRoleCredentials(@JsonProperty("AccessKeyId") String accessKeyId,
@@ -303,6 +314,14 @@ public class WebIdentityCredentialsProvider extends AbstractRefreshingCredential
                                          @JsonProperty("SessionToken") String sessionToken,
                                          @JsonProperty("Expiration") Instant expiration)
             implements Credentials {
+        /**
+         * Creates the assumed-role credentials.
+         *
+         * @param accessKeyId AWS access key id.
+         * @param secretAccessKey AWS secret access key.
+         * @param sessionToken temporary session token associated with the access key.
+         * @param expiration instant at which the credentials expire.
+         */
         public AssumedRoleCredentials {
             Objects.requireNonNull(accessKeyId);
             Objects.requireNonNull(secretAccessKey);

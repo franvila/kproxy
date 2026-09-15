@@ -18,6 +18,7 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.serialization.Serde;
 
 import io.kroxylicious.proxy.config.Configuration;
+import io.kroxylicious.proxy.config.ConfigurationBuilder;
 import io.kroxylicious.proxy.reload.ReconfigureResult;
 import io.kroxylicious.testing.integration.client.KafkaClient;
 
@@ -265,6 +266,7 @@ public interface KroxyliciousTester extends Closeable {
      *
      * @param groupName name of share group
      * @param virtualCluster the virtual cluster we want the client to connect to
+     * @param gatewayName the name of the gateway through which the client should connect
      * @return ShareConsumer
      * @throws IllegalArgumentException if the named virtual cluster is not part of the kroxylicious server
      */
@@ -326,6 +328,13 @@ public interface KroxyliciousTester extends Closeable {
      */
     KafkaClient simpleTestClient();
 
+    /**
+     * Creates a Mock Request client that connects to an arbitrary address. This client
+     * can be used to send multiple ApiMessage to kroxilicious and receive many ApiMessage responses.
+     * @param address the address ({@code host:port}) the client should connect to
+     * @param useTls whether the client should connect over TLS (trusting all certificates)
+     * @return KafkaClient
+     */
     KafkaClient simpleTestClient(String address, boolean useTls);
 
     /**
@@ -340,8 +349,21 @@ public interface KroxyliciousTester extends Closeable {
 
     /**
      * Restarts the Kroxylicious server under test without closing any other resources.
+     * Throws {@link IllegalStateException} if any gateway is configured with an OS-assigned
+     * (port 0) bootstrap port: after restart the proxy would bind to a different ephemeral
+     * port and existing clients would be unable to reconnect. Use
+     * {@link #restartProxy(ConfigurationBuilder)} with fixed ports in that case.
      */
     void restartProxy();
+
+    /**
+     * Restarts the Kroxylicious server under test using {@code configForRestart}, without
+     * closing any other resources. The caller is responsible for ensuring the new configuration
+     * uses ports that existing clients can reconnect to.
+     *
+     * @param configForRestart configuration to use for the restarted proxy
+     */
+    void restartProxy(ConfigurationBuilder configForRestart);
 
     /**
      * Submits {@code newConfig} to the underlying Kroxylicious server's
@@ -355,6 +377,24 @@ public interface KroxyliciousTester extends Closeable {
     CompletableFuture<ReconfigureResult> reconfigure(Configuration newConfig);
 
     /**
+     * Closes and evicts any cached Kafka clients (admin, producer, consumer) that this tester
+     * has previously created for {@code virtualCluster}, across every gateway. Subsequent
+     * client requests for the same cluster will rebuild fresh clients against the tester's
+     * current configuration.
+     * <p>
+     * Useful after a {@link #reconfigure(Configuration)} that changes a cluster's transport
+     * addressing (e.g. port relocation, SNI hostname change, TLS swap): the tester's
+     * per-{@code (cluster, gateway)} client cache holds Kafka clients whose internal
+     * bootstrap is fixed at construction time, and those clients can't follow the cluster
+     * to its new address. Calling this method invalidates the cached clients so that the
+     * next {@link #producer(String)} / {@link #consumer(String)} call resolves a fresh
+     * bootstrap and constructs a new Kafka client around it.
+     *
+     * @param virtualCluster the virtual cluster whose cached clients should be evicted
+     */
+    void closeClientsFor(String virtualCluster);
+
+    /**
      * Close the Kroxylicious server under test and any other resources that need cleaning.
      */
     @Override
@@ -366,7 +406,7 @@ public interface KroxyliciousTester extends Closeable {
      * The number of partitions can be increased via {@link  Admin#createPartitions(Map) Admin.createParitions}.
      * The number of replicas can be increased via {@link Admin#alterPartitionReassignments(Map) Admin.alterParitionsReassignments} by altering the replica assignments.
      * See the <a href="https://kafka.apache.org/documentation/#basic_ops_increase_replication_factor"> Kafka docs</a> for details
-     * <p>
+     *
      * @param clusterName the name of the virtual cluster on which to create the topic
      * @return the name of the created topic
      */
@@ -380,7 +420,7 @@ public interface KroxyliciousTester extends Closeable {
      * The number of partitions can be increased via {@link  Admin#createPartitions(Map) Admin.createParitions}.
      * The number of replicas can be increased via {@link Admin#alterPartitionReassignments(Map) Admin.alterParitionsReassignments} by altering the replica assignments.
      * See the <a href="https://kafka.apache.org/documentation/#basic_ops_increase_replication_factor"> Kafka docs</a> for details
-     * <p>
+     *
      * @param clusterName the name of the virtual cluster on which to create the topic
      * @param numberOfTopics the number of topics to create on the cluster
      * @return the Set of topic names which have been created.
@@ -393,21 +433,35 @@ public interface KroxyliciousTester extends Closeable {
      */
     void deleteTopics(String clusterName);
 
+    /**
+     * Returns the client configuration used to connect to the only virtual cluster.
+     *
+     * @return the client configuration
+     * @throws AmbiguousVirtualClusterException if this tester is for a Kroxylicious configured with multiple virtual clusters
+     */
     Map<String, Object> clientConfiguration();
 
     /**
-     * @return the bootstrap address of the only virtual cluster
+     * Returns the bootstrap address of the only virtual cluster.
+     *
+     * @return the bootstrap address
      * @throws AmbiguousVirtualClusterException if this tester is for a Kroxylicious configured with multiple virtual clusters
      */
     String getBootstrapAddress();
 
     /**
-     * @return the bootstrap address of the named virtual cluster
+     * Returns the bootstrap address of the named virtual cluster.
+     *
+     * @param clusterName the name of the virtual cluster
+     * @param gateway the name of the gateway
+     * @return the bootstrap address
      */
     String getBootstrapAddress(String clusterName, String gateway);
 
     /**
-     * @return the Admin Http Client
+     * Returns the admin HTTP client.
+     *
+     * @return the management client
      * @throws IllegalStateException admin interface not available
      */
     ManagementClient getManagementClient();

@@ -17,8 +17,8 @@ import javax.security.auth.login.AppConfigurationEntry;
 import org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
 import org.apache.kafka.common.security.plain.PlainAuthenticateCallback;
 import org.apache.kafka.common.security.plain.internals.PlainSaslServerProvider;
-import org.apache.kafka.common.utils.Utils;
 
+import io.kroxylicious.kafka.common.utils.Utils;
 import io.kroxylicious.proxy.filter.Filter;
 import io.kroxylicious.proxy.filter.FilterFactory;
 import io.kroxylicious.proxy.filter.FilterFactoryContext;
@@ -65,11 +65,10 @@ public class SaslPlainTermination
         public void handle(Callback[] callbacks) throws UnsupportedCallbackException {
             String username = null;
             for (Callback callback : callbacks) {
-                if (callback instanceof NameCallback) {
-                    username = ((NameCallback) callback).getDefaultName();
+                if (callback instanceof NameCallback nameCallback) {
+                    username = nameCallback.getDefaultName();
                 }
-                else if (callback instanceof PlainAuthenticateCallback) {
-                    PlainAuthenticateCallback plainCallback = (PlainAuthenticateCallback) callback;
+                else if (callback instanceof PlainAuthenticateCallback plainCallback) {
                     boolean authenticated = authenticate(username, plainCallback.password());
                     plainCallback.authenticated(authenticated);
                 }

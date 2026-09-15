@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -107,8 +108,8 @@ class KafkaProxyBackendHandlerTest {
         // When
         outboundChannel.writeAndFlush(Unpooled.EMPTY_BUFFER).addListener((ChannelFutureListener) future -> {
             flushed.set(true);
-            future.channel().close();
-        });
+            future.channel().close().syncUninterruptibly();
+        }).syncUninterruptibly();
 
         // Then
         await().untilTrue(flushed);
@@ -151,6 +152,30 @@ class KafkaProxyBackendHandlerTest {
 
         assertThat(outboundChannel.isActive()).isFalse();
         assertThat(outboundChannel.isOpen()).isFalse();
+    }
+
+    @Test
+    void shouldCloseChannelWhenInClosedBeforeChannelIsActive() throws Exception {
+        // Given — serverCtx is populated in channelRegistered(), which fires as soon as the
+        // outbound channel exists, well before Bootstrap.connect()'s TCP/TLS handshake to the
+        // real upstream broker completes. isActive() is false throughout that window (this is
+        // the scenario an EmbeddedChannel, which is active from construction, can't simulate —
+        // hence the mock, matching the pattern used elsewhere in this file).
+        final ChannelHandlerContext handlerContext = mock(ChannelHandlerContext.class);
+        final Channel channel = mock(Channel.class);
+        when(handlerContext.channel()).thenReturn(channel);
+        when(channel.isActive()).thenReturn(false);
+        ChannelFuture closeFuture = mock(ChannelFuture.class);
+        when(channel.close()).thenReturn(closeFuture);
+        kafkaProxyBackendHandler.channelRegistered(handlerContext);
+
+        // When
+        kafkaProxyBackendHandler.inClosed();
+
+        // Then — without the else branch, this connection would leak forever: the in-flight
+        // connect completes on its own moments later, fully connected, with nothing left to
+        // ever close it.
+        verify(channel).close();
     }
 
     @Test

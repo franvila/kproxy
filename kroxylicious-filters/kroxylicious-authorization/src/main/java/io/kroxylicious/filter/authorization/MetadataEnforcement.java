@@ -15,18 +15,18 @@ import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.apache.kafka.common.Uuid;
-import org.apache.kafka.common.message.MetadataRequestData;
-import org.apache.kafka.common.message.MetadataResponseData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.Errors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.kroxylicious.authorizer.service.Action;
 import io.kroxylicious.authorizer.service.Decision;
+import io.kroxylicious.kafka.common.Uuid;
+import io.kroxylicious.kafka.common.message.MetadataRequestData;
+import io.kroxylicious.kafka.common.message.MetadataResponseData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.Errors;
 import io.kroxylicious.proxy.filter.FilterContext;
 import io.kroxylicious.proxy.filter.RequestFilterResult;
 import io.kroxylicious.proxy.filter.ResponseFilterResult;
@@ -130,7 +130,8 @@ class MetadataEnforcement extends ApiEnforcement<MetadataRequestData, MetadataRe
 
         var initialRequestHeader = new RequestHeaderData()
                 .setRequestApiKey(ApiKeys.METADATA.id)
-                .setRequestApiVersion(authorizationFilter.useMetadataVersion() != -1 ? authorizationFilter.useMetadataVersion() : ApiKeys.METADATA.latestVersion()) // Should support topic ids
+                .setRequestApiVersion(authorizationFilter.useMetadataVersion() != -1 ? authorizationFilter.useMetadataVersion()
+                        : (short) Math.max(4, header.requestApiVersion()))
                 .setClientId(header.clientId());
         var initialRequest = new MetadataRequestData()
                 .setTopics(request.topics())
@@ -277,11 +278,11 @@ class MetadataEnforcement extends ApiEnforcement<MetadataRequestData, MetadataRe
                 });
     }
 
-    static record MetadataCompleter(boolean includeClusterAuthorizedOperations,
-                                    boolean includeTopicAuthorizedOperations,
-                                    boolean isAllTopics,
-                                    boolean requestUsesTopicIds,
-                                    List<MetadataResponseData.MetadataResponseTopic> topics)
+    record MetadataCompleter(boolean includeClusterAuthorizedOperations,
+                             boolean includeTopicAuthorizedOperations,
+                             boolean isAllTopics,
+                             boolean requestUsesTopicIds,
+                             List<MetadataResponseData.MetadataResponseTopic> topics)
             implements InflightState<MetadataResponseData> {
         @Override
         public MetadataResponseData merge(MetadataResponseData response) {

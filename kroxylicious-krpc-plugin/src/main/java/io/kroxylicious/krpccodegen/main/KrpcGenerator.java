@@ -21,7 +21,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,14 +35,12 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-import org.apache.kafka.common.protocol.ApiKeys;
 import org.graalvm.polyglot.Context;
 import org.graalvm.polyglot.TypeLiteral;
 
 import io.kroxylicious.krpccodegen.KrpcCodeGenerationException;
 import io.kroxylicious.krpccodegen.model.EntityTypeSetFactory;
 import io.kroxylicious.krpccodegen.model.KrpcSchemaObjectWrapper;
-import io.kroxylicious.krpccodegen.model.RetrieveApiKey;
 import io.kroxylicious.krpccodegen.schema.ApiSpec;
 import io.kroxylicious.krpccodegen.schema.EntityType;
 import io.kroxylicious.krpccodegen.schema.MessageSpec;
@@ -62,7 +59,7 @@ import freemarker.template.TemplateExceptionHandler;
 import freemarker.template.Version;
 
 /**
- * Code generator driven by Apache Kafka message specifications definitions.
+ * Code generator driven by Apache Kafka message specification definitions.
  */
 public class KrpcGenerator {
 
@@ -125,7 +122,7 @@ public class KrpcGenerator {
         }
 
         /**
-         * configures the directory contain the Apache Free Maker template.
+         * configures the directory containing the Apache FreeMarker templates.
          * @param templateDir template directory.
          * @return this
          */
@@ -167,7 +164,7 @@ public class KrpcGenerator {
         }
 
         /**
-         * The location of the project's source files (usually <code>src/main/java</code>.
+         * The location of the project's source files (usually <code>src/main/java</code>).
          * When in skipOutputIfSourceExists mode, before generating an output file to
          * the output directory, it checks whether the equivalent file already exist
          * in sourceDir. If so, output is skipped.
@@ -182,8 +179,8 @@ public class KrpcGenerator {
 
         /**
          * configures the pattern used to form the output file name.
-         * This understands two pattern {@code ${messageSpecName}} and {@code ${templateName}}
-         * which if present will be replaced by the message specification name the template
+         * This understands two patterns {@code ${messageSpecName}} and {@code ${templateName}}
+         * which if present will be replaced by the message specification name and the template
          * name respectively.
          *
          * @param outputFilePattern output filename pattern.
@@ -306,9 +303,9 @@ public class KrpcGenerator {
     }
 
     /**
-     * Constructs a generator in single mode. The generator passes a list of all
-     * message specifications to the template which is used to produce a single
-     * output file.
+     * Constructs a generator in single mode. The generator passes each message
+     * specification to the template in turn, as the {@code inputSpec} variable,
+     * producing a distinct output file for each message specification.
      * @return the builder
      */
     public static Builder single() {
@@ -316,8 +313,9 @@ public class KrpcGenerator {
     }
 
     /**
-     * Constructs a generator in multi-mode. The generator each message specification
-     * to the generator in turn, each of which produces a distinct output file.
+     * Constructs a generator in multi-mode. The generator passes a list of all
+     * message specifications to the template, as the {@code inputSpecs} variable,
+     * which is used to produce a single output file per template.
      * @return the builder
      */
     public static Builder multi() {
@@ -349,7 +347,6 @@ public class KrpcGenerator {
         else {
             Map<String, Object> dm = new HashMap<>(dataModel);
             dm.put("outputPackage", outputPackage);
-            dm.put("retrieveApiKey", new RetrieveApiKey());
             dm.put("createEntityTypeSet", new EntityTypeSetFactory());
             dm.put("inputSpecs", inputSpecs);
             generatedFiles = renderMulti(cfg, dm);
@@ -596,11 +593,22 @@ public class KrpcGenerator {
         }
 
         if (templateName != null) {
-            templateName = templateName.substring(Math.max(0, templateName.lastIndexOf(File.separator) + 1), templateName.indexOf(".ftl"));
-            pattern = pattern.replace("${templateName}", templateName);
+            pattern = pattern.replace("${templateName}", templateResourceBaseName(templateName));
         }
 
         return pattern;
+    }
+
+    /**
+     * Strips the directory prefix and the {@code .ftl} extension from a template name,
+     * e.g. {@code "Kproxy/KrpcRequestFilter.ftl"} yields {@code "KrpcRequestFilter"}.
+     * <p>
+     * Template names are FreeMarker resource names: path steps are separated by
+     * {@code '/'} on every operating system. They are not file system paths, so
+     * {@link File#separator} must not be used here (see issue #4228).
+     */
+    static String templateResourceBaseName(String templateName) {
+        return templateName.substring(Math.max(0, templateName.lastIndexOf('/') + 1), templateName.indexOf(".ftl"));
     }
 
     private Set<ApiSpec> toApiSpecs(Set<MessageSpec> messageSpecs) {
@@ -618,16 +626,14 @@ public class KrpcGenerator {
         }
 
         return allRequests.keySet().stream()
-                .map(key -> {
-                    var request = Objects.requireNonNull(allRequests.get(key));
-                    if (!allResponses.containsKey(key)) {
-                        throw new NoSuchElementException("No response found for request with API key: " + key);
+                .map(apiKey -> {
+                    var request = Objects.requireNonNull(allRequests.get(apiKey));
+                    if (!allResponses.containsKey(apiKey)) {
+                        throw new NoSuchElementException("No response found for request with API key: " + apiKey);
                     }
 
-                    var response = allResponses.get(key);
-                    var name = request.name().replaceFirst("Request$", "");
-                    var listeners = Set.copyOf(new HashSet<>(request.listeners()));
-                    return new ApiSpec(name, ApiKeys.forId(key), listeners, request, response);
+                    var response = allResponses.get(apiKey);
+                    return new ApiSpec(request, response);
                 })
                 .sorted(Comparator.comparing(Named::name))
                 .collect(Collectors.toCollection(LinkedHashSet::new));

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -25,6 +26,10 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.kroxylicious.proxy.internal.net.AddressingSpec;
+import io.kroxylicious.proxy.internal.net.AdvertisingSpec;
+import io.kroxylicious.proxy.internal.net.BindingSpec;
+import io.kroxylicious.proxy.internal.net.ProxyNodeId;
 import io.kroxylicious.proxy.service.HostPort;
 import io.kroxylicious.proxy.service.NodeIdentificationStrategy;
 
@@ -84,8 +89,20 @@ public class PortIdentifiesNodeIdentificationStrategy
     private final Map<Integer, Integer> nodeIdToPort;
 
     @JsonIgnore
+    private final Map<Integer, Integer> portToNodeId;
+
+    @JsonIgnore
     private final Set<Integer> exclusivePorts;
 
+    /**
+     * Creates a port based node identification strategy.
+     *
+     * @param bootstrapAddress host and port of the bootstrap address
+     * @param advertisedBrokerAddressPattern optional address pattern used to advertise broker addresses,
+     *        may contain the {@code $(nodeId)} replacement token; defaults to the host of {@code bootstrapAddress}
+     * @param nodeStartPort optional first port assigned to the brokers; defaults to the bootstrap port plus one
+     * @param nodeIdRanges node id ranges present in the target cluster; if null or empty a default range of 0-2 is assumed
+     */
     @JsonCreator
     public PortIdentifiesNodeIdentificationStrategy(@JsonProperty(required = true, value = "bootstrapAddress") HostPort bootstrapAddress,
                                                     @Nullable @JsonProperty(required = false, value = "advertisedBrokerAddressPattern") String advertisedBrokerAddressPattern,
@@ -97,9 +114,9 @@ public class PortIdentifiesNodeIdentificationStrategy
         this.computedAdvertisedBrokerAddressPattern = advertisedBrokerAddressPattern != null ? advertisedBrokerAddressPattern : bootstrapAddress.host();
         verifyNodeAddressPattern(this.computedAdvertisedBrokerAddressPattern);
         this.nodeStartPort = nodeStartPort;
-        this.computedNodeStartPort = nodeStartPort != null ? nodeStartPort : (bootstrapAddress.port() + 1);
-        if (this.computedNodeStartPort < 1) {
-            throw new IllegalArgumentException("nodeStartPort cannot be less than 1");
+        this.computedNodeStartPort = computeNodeStartPort(bootstrapAddress, nodeStartPort);
+        if (this.computedNodeStartPort < 0) {
+            throw new IllegalArgumentException("nodeStartPort cannot be negative");
         }
         this.nodeIdRanges = nodeIdRanges;
         var namedRanges = Optional.ofNullable(nodeIdRanges)
@@ -108,15 +125,28 @@ public class PortIdentifiesNodeIdentificationStrategy
         verifyRangeNamesAreUnique(namedRanges);
         verifyRangesAreDistinct(namedRanges);
         nodeIdToPort = mapNodeIdToPort(namedRanges, this.computedNodeStartPort);
+        portToNodeId = nodeIdToPort.entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey, (a, b) -> a));
         int numberOfNodePorts = nodeIdToPort.size();
         if (this.computedNodeStartPort + numberOfNodePorts - 1 > 65535) {
             throw new IllegalArgumentException("The maximum port mapped exceeded 65535");
         }
-        verifyNoRangeContainsBootstrapPort(bootstrapAddress, namedRanges, this.computedNodeStartPort, nodeIdToPort);
+        if (!HostPort.isOsAssigned(bootstrapAddress.port())) {
+            verifyNoRangeContainsBootstrapPort(bootstrapAddress, namedRanges, this.computedNodeStartPort, nodeIdToPort);
+        }
         this.computedNodeIdRanges = namedRanges;
-        var allExclusivePorts = new HashSet<>(nodeIdToPort.values());
-        allExclusivePorts.add(bootstrapAddress.port());
-        this.exclusivePorts = Collections.unmodifiableSet(allExclusivePorts);
+        this.exclusivePorts = Collections.unmodifiableSet(computeExclusivePorts(bootstrapAddress));
+    }
+
+    private Set<Integer> computeExclusivePorts(HostPort bootstrapAddress) {
+        var ports = new HashSet<>(nodeIdToPort.values());
+        ports.add(bootstrapAddress.port());
+        ports.removeIf(HostPort::isOsAssigned);
+        return ports;
+    }
+
+    private static int computeNodeStartPort(HostPort bootstrapAddress, @Nullable Integer nodeStartPort) {
+        return Objects.requireNonNullElseGet(nodeStartPort, () -> HostPort.isOsAssigned(bootstrapAddress.port()) ? 0 : bootstrapAddress.port() + 1);
     }
 
     private static void verifyNodeAddressPattern(String advertisedBrokerAddressPattern) {
@@ -187,29 +217,49 @@ public class PortIdentifiesNodeIdentificationStrategy
         List<Integer> ascendingNodeIds = unsortedNodeIds.distinct().sorted().boxed().toList();
         Map<Integer, Integer> nodeIdToPort = new HashMap<>();
         for (int offset = 0; offset < ascendingNodeIds.size(); offset++) {
-            nodeIdToPort.put(ascendingNodeIds.get(offset), nodeStartPort + offset);
+            nodeIdToPort.put(ascendingNodeIds.get(offset), HostPort.isOsAssigned(nodeStartPort) ? 0 : nodeStartPort + offset);
         }
         return nodeIdToPort;
     }
 
+    /**
+     * The configured node start port, as given in the configuration.
+     *
+     * @return the node start port, or {@code null} if it was not configured
+     */
     @Nullable
     @JsonProperty
     public Integer getNodeStartPort() {
         return nodeStartPort;
     }
 
+    /**
+     * The configured node id ranges, as given in the configuration.
+     *
+     * @return the node id ranges, or {@code null} if they were not configured
+     */
     @Nullable
     @JsonProperty
     public List<NamedRange> getNodeIdRanges() {
         return nodeIdRanges;
     }
 
+    /**
+     * The configured advertised broker address pattern, as given in the configuration.
+     *
+     * @return the advertised broker address pattern, or {@code null} if it was not configured
+     */
     @Nullable
     @JsonProperty
     public String getAdvertisedBrokerAddressPattern() {
         return advertisedBrokerAddressPattern;
     }
 
+    /**
+     * The configured bootstrap address.
+     *
+     * @return the bootstrap address
+     */
     @JsonProperty(required = true)
     public HostPort getBootstrapAddress() {
         return bootstrapAddress;
@@ -221,6 +271,8 @@ public class PortIdentifiesNodeIdentificationStrategy
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass") // Distinct NodeIdentificationStrategyFactory implementations must never compare equal. getClass()
+    // enforces that; instanceof would not if this class were ever subclassed.
     public boolean equals(Object obj) {
         if (obj == this) {
             return true;
@@ -249,7 +301,10 @@ public class PortIdentifiesNodeIdentificationStrategy
                 "nodeIdRanges=" + computedNodeIdRanges + ']';
     }
 
-    private class Strategy implements NodeIdentificationStrategy {
+    private class Strategy implements NodeIdentificationStrategy, BindingSpec, AdvertisingSpec, AddressingSpec {
+
+        private final Map<Integer, Integer> boundPortToNodeId = new ConcurrentHashMap<>();
+        private volatile int boundBootstrapPort = -1;
 
         @Override
         public HostPort getClusterBootstrapAddress() {
@@ -261,9 +316,7 @@ public class PortIdentifiesNodeIdentificationStrategy
             if (!nodeIdToPort.containsKey(nodeId)) {
                 throw new IllegalArgumentException(
                         "Cannot generate node address for node id %d as it is not contained in the ranges defined for provider with downstream bootstrap %s"
-                                .formatted(
-                                        nodeId,
-                                        bootstrapAddress));
+                                .formatted(nodeId, bootstrapAddress));
             }
             int port = nodeIdToPort.get(nodeId);
             return new HostPort(BrokerAddressPatternUtils.replaceLiteralNodeId(computedAdvertisedBrokerAddressPattern, nodeId), port);
@@ -278,6 +331,68 @@ public class PortIdentifiesNodeIdentificationStrategy
         public Map<Integer, HostPort> discoveryAddressMap() {
             return nodeIdToPort.keySet().stream()
                     .collect(Collectors.toMap(Function.identity(), this::getBrokerAddress));
+        }
+
+        @Override
+        public HostPort getBootstrapBindAddress() {
+            return bootstrapAddress;
+        }
+
+        @Override
+        public Map<Integer, HostPort> nodeBindAddresses() {
+            return nodeIdToPort.entrySet().stream()
+                    .collect(Collectors.toMap(
+                            Map.Entry::getKey,
+                            e -> new HostPort(bootstrapAddress.host(), e.getValue())));
+        }
+
+        @Override
+        public Optional<String> getBindAddress() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Set<Integer> getSharedPorts() {
+            return Set.of();
+        }
+
+        @Override
+        public boolean requiresServerNameIndication() {
+            return false;
+        }
+
+        @Override
+        public void registerBoundPort(int nodeId, int actualPort) {
+            boundPortToNodeId.put(actualPort, nodeId);
+        }
+
+        @Override
+        public void registerBoundBootstrapPort(int actualPort) {
+            boundBootstrapPort = actualPort;
+        }
+
+        @Override
+        public HostPort advertisedBootstrapAddress(ProxyNodeId.Bootstrap bootstrap) {
+            return new HostPort(bootstrapAddress.host(), bootstrap.gateway().resolvePort(bootstrap));
+        }
+
+        @Override
+        public HostPort advertisedBrokerAddress(ProxyNodeId virtualNodeId) throws IllegalArgumentException {
+            int nodeId = ((ProxyNodeId.Broker) virtualNodeId).nodeId();
+            String host = BrokerAddressPatternUtils.replaceLiteralNodeId(computedAdvertisedBrokerAddressPattern, nodeId);
+            return new HostPort(host, virtualNodeId.gateway().resolvePort(virtualNodeId));
+        }
+
+        @Override
+        public Target identify(int port, @Nullable String sniHostname) {
+            if (port == bootstrapAddress.port() || port == boundBootstrapPort) {
+                return new Target.Bootstrap();
+            }
+            Integer nodeId = boundPortToNodeId.get(port);
+            if (nodeId == null) {
+                nodeId = portToNodeId.get(port);
+            }
+            return nodeId != null ? new Target.Node(nodeId) : new Target.NotRecognised();
         }
 
     }

@@ -27,12 +27,23 @@ public class NetworkBindRequest extends NetworkBindingOperation<Channel> {
     private final CompletableFuture<Channel> future;
     private final Endpoint endpoint;
 
+    /**
+     * Creates a network bind request.
+     *
+     * @param future future that will be completed with the listening channel once the bind operation completes.
+     * @param endpoint endpoint describing the address, port and TLS mode to bind.
+     */
     public NetworkBindRequest(CompletableFuture<Channel> future, Endpoint endpoint) {
         super(endpoint.tls());
         this.future = future;
         this.endpoint = endpoint;
     }
 
+    /**
+     * Address of the interface to bind. {@link Optional#empty()} indicates the 'any' address.
+     *
+     * @return binding address
+     */
     public Optional<String> getBindingAddress() {
         return endpoint.bindingAddress();
     }
@@ -69,7 +80,8 @@ public class NetworkBindRequest extends NetworkBindingOperation<Channel> {
             }
             bind.addListener((ChannelFutureListener) channelFuture -> executorService.execute(() -> {
                 if (channelFuture.cause() != null) {
-                    future.completeExceptionally(channelFuture.cause());
+                    future.completeExceptionally(new RuntimeException(
+                            "bind to %s:%d failed".formatted(bindingAddress.orElse("<any>"), port), channelFuture.cause()));
                 }
                 else {
                     future.complete(channelFuture.channel());

@@ -13,14 +13,15 @@ This document gives a detailed breakdown of the various build processes and opti
 
 > :warning: **If you are using Podman please see [these notes](#running-integration-tests-on-podman) below**
 
+If you are developing the **Kroxylicious Operator**, you'll need a Kubernetes environment. [minikube](https://minikube.sigs.k8s.io/docs/) is sufficient).
 
+A few optional operator features target OpenShift. If developing these features [Red Hat OpenShift Local](https://developers.redhat.com/products/openshift-local) is sufficient.
 
 ## Build
 
 JDK version 21 or newer, and [Apache Maven®](https://maven.apache.org) are required for building this project.
 
-Kroxylicious targets language level 17, except for the `integrationtests` module
-which targets 21 to access some new language features. At production runtime, Java 17 remains supported but is deprecated. Use Java 21 or later.
+Kroxylicious targets language level 21. Kroxylicious is tested on Java 21 and Java 25.
 
 Build the project like this:
 
@@ -44,14 +45,35 @@ The running of the tests can be controlled with the following Maven properties:
 
 The build behavior can be controlled with the following Maven profiles:
 
-| profile                    | description                                                                                                                                                                                           |
-|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `-Pqa` (active by default) | Runs quality assurance checks: dependency analysis, code formatting, import sorting, license headers, checkstyle, spotbugs, japicmp API compatibility, and enforcer rules. Use `-P '!qa'` to disable. |
-| `-Pci`                     | CI-specific configuration: validates formatting instead of applying it, runs jacoco code coverage, switches license plugin to check mode instead of format mode.                                      |
-| `-Pdist`                   | Creates distribution artifacts including tarball, container images. Required for building deployable packages.                                                                                        |
-| `-Pquick`                  | Fast build mode: skips all tests, QA checks, javadoc, and documentation. Activates with `-Dquick`. Excludes integration/system test modules from reactor.                                             |
-| `-Psystemtest`             | Enables system test module and skips all other test types. Use with `-Pdist` to run Kubernetes-based system tests.                                                                                    |
-| `-P-withAdditionalFilters` | Excludes Kroxylicious-maintained filter implementations from the distribution. Only use with `-Pdist`.                                                                                                |
+### Module group profiles
+
+All modules are declared in named group profiles. `build-the-world` activates automatically when
+the `targeted-build` property is absent, so a plain `mvn verify` builds everything. IDEs pick this up
+without any extra configuration. For isolated builds, pass `-Dtargeted-build` and name the group(s) you want:
+
+```shell
+mvn -Dtargeted-build -Pproxy-core verify              # proxy modules only
+mvn -Dtargeted-build -Pkubernetes-management verify   # kubernetes modules only
+```
+
+| profile                  | modules included                                                                                        |
+|--------------------------|---------------------------------------------------------------------------------------------------------|
+| `build-the-world`        | All groups — activated when `targeted-build` property is absent. Pass `-Dtargeted-build` to exclude it.          |
+| `proxy-core`             | `kroxylicious-annotations`, `kroxylicious-krpc-plugin`, `kroxylicious-kafka-message-tools`, `kroxylicious-bom`, `kroxylicious-api`, `kroxylicious-integration-test-support`, `kroxylicious-runtime`, `kroxylicious-app` |
+| `runtime-plugins`        | KMS, filters, authorizer, and their test-support modules                                                |
+| `supplementary`          | `kroxylicious-docs`, `kroxylicious-openmessaging-benchmarks`                                            |
+| `kubernetes-management`  | All modules under `kroxylicious-kubernetes/`                                                            |
+
+### Functional profiles
+
+| profile                                                 | description                                                                                                                                                                                                     |
+|---------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `-Pqa` (active by default)                              | Runs quality assurance checks: dependency analysis, code formatting, import sorting, license headers, checkstyle, spotbugs, japicmp API compatibility, and enforcer rules. Use `-P '!qa'` to disable.           |
+| `-Pci`                                                  | CI-specific configuration: validates formatting instead of applying it, runs jacoco code coverage, switches license plugin to check mode instead of format mode.                                                |
+| `-Pdist`                                                | Creates distribution artifacts including tarball, container images. Required for building deployable packages.                                                                                                  |
+| `quick`                                                 | Fast build mode: skips all tests, QA checks, javadoc, and documentation. Activated by setting the `quick` property. e.g. `-Dquick`. Excludes integration/system test modules from reactor.                      |
+| `-Psystemtest`                                          | Enables system test module and skips all other test types. Use with `-Pdist` to run Kubernetes-based system tests.                                                                                              |
+| `-P-withAdditionalFilters`                              | Excludes Kroxylicious-maintained filter implementations from the distribution. Only use with `-Pdist`.                                                                                                          |
 | `errorprone-jdk-compatible` (auto-activated on JDK 17+) | Runs Error Prone static analysis during compilation to detect bug patterns. Adds ~15-30% to compilation time. Disable with `-Derrorprone.skip=true` for faster builds (see property table above for semantics). |
 
 The kafka environment used by the integrations tests can be _defaulted_ with these two environment variables.
@@ -94,6 +116,54 @@ Run the following to add missing license headers e.g. when adding new source fil
 ```shell
 mvn org.commonjava.maven.plugins:directory-maven-plugin:highest-basedir@resolve-rootdir license:format
 ```
+
+### Using SNAPSHOT Artifacts
+
+Every push to `main` and `release/*` branches publishes SNAPSHOT artifacts to the [Central Portal snapshot repository](https://central.sonatype.com/repository/maven-snapshots/).
+This lets you test against unreleased changes without building Kroxylicious from source.
+
+> **Warning:** SNAPSHOT artifacts carry no compatibility guarantees.
+> Unreleased APIs may change or be removed between snapshots without notice.
+> Do not use SNAPSHOTs in production.
+
+To pull SNAPSHOT Kroxylicious dependencies into a Maven project, add the snapshot repository to your `pom.xml`:
+
+```xml
+<repositories>
+  <repository>
+    <id>central-snapshots</id>
+    <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+    <snapshots>
+      <enabled>true</enabled>
+    </snapshots>
+  </repository>
+</repositories>
+```
+
+For Gradle (Kotlin DSL):
+
+```kotlin
+repositories {
+    maven {
+        url = uri("https://central.sonatype.com/repository/maven-snapshots/")
+        mavenContent {
+            snapshotsOnly()
+        }
+    }
+}
+```
+
+Then depend on the SNAPSHOT version of any Kroxylicious artifact, for example:
+
+```xml
+<dependency>
+  <groupId>io.kroxylicious</groupId>
+  <artifactId>kroxylicious-api</artifactId>
+  <version><!-- e.g. 0.24.0-SNAPSHOT --></version>
+</dependency>
+```
+
+The current SNAPSHOT version is the `version` field in the root `pom.xml` of this repository.
 
 ### Formatting the Code
 No one likes to argue about code formatting in pull requests, as project we take the stance that if we can't automate the formatting we are not going to argue about it either. Having said that we don't want a mishmash of conflicting styles! So we attack this from multiple angles.
@@ -203,6 +273,13 @@ Alternatively, to test locally made changes, push the built operator and proxy i
 minikube image load kroxylicious-kubernetes/kroxylicious-operator/target/kroxylicious-operator.img.tar.gz --alsologtostderr=true 2>&1 | tail -n1
 minikube image load kroxylicious-app/target/kroxylicious-proxy.img.tar.gz --alsologtostderr=true 2>&1 | tail -n1
 minikube image load kroxylicious-kubernetes/kroxylicious-admission/target/kroxylicious-webhook.img.tar.gz --alsologtostderr=true 2>&1 | tail -n1
+```
+
+To run the OAUTHBEARER SASL termination system test, also build and load the jose4j-augmented test-clients image:
+
+```
+mvn -pl kroxylicious-test-images -Pdist clean package
+minikube image load kroxylicious-test-images/target/oauth-test-clients.img.tar.gz --alsologtostderr=true 2>&1 | tail -n1
 ```
 
 > :warning: Some minikube container runtimes may not be able to load a gzipped tar (https://github.com/kubernetes/minikube/issues/21678), if the above commands report a failure 
@@ -397,6 +474,7 @@ the container engine. Default value: `$HOME/.docker/config.json`
 * `SKIP_STRIMZI_INSTALL`: skip strimzi installation. Default value: `false`
 * `KAFKA_CLIENT`: client used to produce/consume messages. Default value: `strimzi_test_client`. Currently supported values: `strimzi_test_client`, `kaf`, `kcat`, `python_test_client`
 * `TEST_CLIENTS_IMAGE`: strimzi test client image to be used when running the tests. It is useful when running regression tests. Default value: `quay.io/strimzi-test-clients/test-clients:latest-kafka-${kafka.version}`
+* `TEST_CLIENTS_OAUTH_IMAGE`: test client image used only by the OAUTHBEARER SASL termination test. This is a build of `TEST_CLIENTS_IMAGE` with `jose4j` added to the classpath (see `kroxylicious-test-images`), needed because Kafka 4.1+ clients eagerly load `jose4j` during OAUTHBEARER login (KAFKA-20184) but the upstream image doesn't bundle it. Default value: `localhost/kroxylicious/oauth-test-clients:jose4j`
 * `USE_CLOUD_KMS`: set to `true` in case AWS/Azure Cloud is used for Record Encryption System Tests. LocalStack/Lowkey-Vault will be used by default. Default value: `false`
 * `AWS_REGION`: region of the AWS Cloud account to be used for KMS management. Default value: `us-east-2`
 * `AWS_ACCESS_KEY_ID`: key id of the aws account with admin permissions to be used for KMS management. Mandatory when `AWS_USE_CLOUD` is `true`. Default value: `test`
@@ -563,7 +641,7 @@ Refer to section [Building and pushing Kroxylicious Container Images](#building-
 
 ## Installing the operator
 
-Spin up a minikube custer:
+Spin up a minikube cluster:
 
 ```bash
 minikube start --kubernetes-version=latest
@@ -622,7 +700,80 @@ environments.
 
 ## Manual testing
 
-To help simplify local testing we also have a simple composefile in `compose/kafa-compose.yaml`. See the [compose/README.md](./compose/README.md) for details about how to use the proxy deployed.
+To help simplify local testing we also have a simple composefile in `compose/kafka-compose.yaml`. See the [compose/README.md](./compose/README.md) for details about how to use the proxy deployed.
+
+## Changelog Entries
+
+User-facing changes must be documented by adding a YAML entry file to `changelog/unreleased/`.
+Not every commit needs a changelog entry e.g. documentation fixes, internal build tooling changes, etc.
+
+**File naming:** `<zero-padded-5-digit-issue-number>-<short-slug>.yaml` (e.g. `01234-add-record-encryption.yaml`). The zero-padding ensures entries sort in numeric order. CI enforces this format.
+
+**Entry format:**
+```yaml
+title: "feat(runtime): add graceful shutdown with configurable drain timeout"
+type: added
+merge_requests:    # use for PRs (only the first is rendered as a link prefix)
+  - 1234
+# or:
+issues:            # use for issues (only the first is rendered as a link prefix)
+  - 5678
+links:             # optional: links to external resources, e.g. design docs or CVE records
+  - name: CVE-2025-12345
+    url: https://www.cve.org/CVERecord?id=CVE-2025-12345
+authors:           # optional: credit the change's author(s)
+  - name: Your Name
+    nick: yourhandle
+    url: https://github.com/yourhandle
+important_notes:   # optional: appear under "Changes, deprecations and removals"
+  - "Migration required: replace `oldConfig` with `newConfig`."
+  - "`OldClass` is deprecated; use `NewClass` instead."
+```
+
+The `title` always appears in the main version section. If the change also requires a migration note or deprecation callout, add one or more `important_notes` - these appear as sub-bullets under the same entry in the "Changes, deprecations and removals" section.
+
+Each `links` entry is rendered after the title as a bracketed link, e.g. `([CVE-2025-12345](https://...))`. Use links for design documents, CVE records, or other external resources relevant to the change. `authors` are rendered after the title as `(thanks [@yourhandle](https://github.com/yourhandle))` - the `nick` (prefixed with `@`) is preferred over `name`, and `url` is optional.
+
+**`type`** - pick the one that best describes the change (the `title` should still follow [Conventional Commits](https://www.conventionalcommits.org/), but the `type` field must be one of the values [logchange](https://github.com/logchange/logchange) accepts):
+
+| Type               | Use for                                                            |
+|--------------------|--------------------------------------------------------------------|
+| `added`            | New features, capabilities, or configuration options               |
+| `changed`          | Changes to existing behaviour                                      |
+| `deprecated`       | Deprecations of features or APIs                                   |
+| `removed`          | Removals of features or APIs                                       |
+| `fixed`            | Bug fixes                                                          |
+| `security`         | Security fixes                                                     |
+| `dependency_update`| Runtime dependency upgrades visible to users                       |
+| `other`            | Performance improvements or user-visible refactoring               |
+
+Simple example (no migration notes):
+
+```yaml
+# changelog/unreleased/01234-add-cool-feature.yaml
+title: "feat(runtime): add cool new feature"
+type: added
+merge_requests:
+  - 1234
+```
+
+Example with migration notes:
+
+```yaml
+# changelog/unreleased/01234-add-cool-feature.yaml
+title: "feat(runtime): add cool new feature"
+type: added
+merge_requests:
+  - 1234
+important_notes:
+  - |
+    The new feature changes how X behaves. Users relying on the old behaviour should migrate by doing Y.
+    * Option A: does this
+    * Option B: does that
+  - "**Behaviour change**: `OldClass.method()` now throws `SomeException` if Z."
+```
+
+`CHANGELOG.md` is regenerated automatically during the release process - contributors do not need to update it. The Maven `validate` phase lints changelog entries and checks their filenames, so contributors receive the same feedback locally as in CI.
 
 # Deprecation Policy
 

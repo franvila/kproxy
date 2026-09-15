@@ -21,12 +21,21 @@ import edu.umd.cs.findbugs.annotations.Nullable;
  */
 public class KroxyliciousTesterBuilder {
 
+    /**
+     * Creates a KroxyliciousTesterBuilder with sensible defaults.
+     */
+    public KroxyliciousTesterBuilder() {
+        // explicit default constructor for javadoc
+    }
+
+    @Nullable
     private String trustStoreLocation = null;
     @Nullable
     private String trustStorePassword = null;
     private BiFunction<Configuration, Features, AutoCloseable> kroxyliciousFactory = DefaultKroxyliciousTester::spawnProxy;
     private Features features = Features.defaultFeatures();
     private DefaultKroxyliciousTester.ClientFactory clientFactory = (clusterName, defaultConfiguration) -> new KroxyliciousClients(defaultConfiguration);
+    @Nullable
     private ConfigurationBuilder configurationBuilder;
 
     /**

@@ -12,7 +12,10 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 import org.assertj.core.api.Assumptions;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -20,12 +23,18 @@ import org.awaitility.Awaitility;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import io.kroxylicious.proxy.config.Configuration;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -34,6 +43,14 @@ class VirtualClusterRegistryTest {
 
     private static final String CLUSTER_A = "cluster-a";
     private static final String CLUSTER_B = "cluster-b";
+
+    /**
+     * No-op resolver for tests that don't exercise {@code resolveModel}. Throws if invoked so
+     * accidental dependence on resolveModel surfaces as a clear failure rather than a null VCM.
+     */
+    private static final BiFunction<Configuration, String, VirtualClusterModel> NO_OP_RESOLVER = (cfg, name) -> {
+        throw new UnsupportedOperationException("resolveModel not exercised by this test");
+    };
 
     @SuppressWarnings("unchecked")
     private final BiConsumer<String, Optional<Throwable>> noOpCallback = mock(BiConsumer.class);
@@ -47,6 +64,15 @@ class VirtualClusterRegistryTest {
         return model;
     }
 
+    private static VirtualClusterModel mockModelRecordingCloseThread(String name, AtomicReference<String> closeThreadName) {
+        var model = mockModel(name);
+        doAnswer(invocation -> {
+            closeThreadName.set(Thread.currentThread().getName());
+            return null;
+        }).when(model).close();
+        return model;
+    }
+
     private VirtualClusterLifecycle requireLifecycle(String name) {
         var lifecycle = vcc.lifecycleFor(name);
         Assumptions.assumeThat(lifecycle).as("lifecycle for '%s' should exist", name).isNotNull();
@@ -55,7 +81,7 @@ class VirtualClusterRegistryTest {
 
     @BeforeEach
     void setUp() {
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), NO_OP_RESOLVER, noOpCallback);
     }
 
     @Test
@@ -74,7 +100,7 @@ class VirtualClusterRegistryTest {
         // given
         var multiVcm = new VirtualClusterRegistry(
                 List.of(mockModel("cluster-a"), mockModel(CLUSTER_B)),
-                noOpCallback);
+                NO_OP_RESOLVER, noOpCallback);
 
         // when/then
         assertThat(multiVcm.lifecycleFor("cluster-a")).isNotNull();
@@ -91,23 +117,51 @@ class VirtualClusterRegistryTest {
     }
 
     @Test
+    void modelForReturnsRegisteredModel() {
+        // CLUSTER_A is in the registry via setUp.
+        assertThat(vcc.modelFor(CLUSTER_A))
+                .isNotNull()
+                .extracting(VirtualClusterModel::getClusterName).isEqualTo(CLUSTER_A);
+    }
+
+    @Test
+    void modelForReturnsNullForUnknownCluster() {
+        assertThat(vcc.modelFor("never-existed")).isNull();
+    }
+
+    @Test
+    void modelForFollowsRuntimeAddAndRemove() throws Exception {
+        // After addVirtualCluster, modelFor returns the new model.
+        var added = mockModel(CLUSTER_B);
+        vcc.addVirtualCluster(added).get(5, TimeUnit.SECONDS);
+        assertThat(vcc.modelFor(CLUSTER_B)).isSameAs(added);
+
+        // After removeVirtualCluster, the entry is retained (append-only policy) so modelFor
+        // continues to return the same model. The lifecycle's state distinguishes "Stopped"
+        // from "Serving" — callers that care about state should compose with lifecycleFor.
+        vcc.initializationSucceeded(CLUSTER_B);
+        vcc.removeVirtualCluster(CLUSTER_B).join();
+        assertThat(vcc.modelFor(CLUSTER_B)).isSameAs(added);
+    }
+
+    @Test
     void shouldExposeVirtualClusterModels() {
         // given
         var modelA = mockModel("cluster-a");
         var modelB = mockModel(CLUSTER_B);
-        var multiVcm = new VirtualClusterRegistry(List.of(modelA, modelB), noOpCallback);
+        var multiVcm = new VirtualClusterRegistry(List.of(modelA, modelB), NO_OP_RESOLVER, noOpCallback);
 
         // when
         var models = multiVcm.virtualClusterModels();
 
-        // then
-        assertThat(models).containsExactly(modelA, modelB);
+        // then — order is unspecified (backing map is ConcurrentHashMap); only contents matter.
+        assertThat(models).containsExactlyInAnyOrder(modelA, modelB);
     }
 
     @SuppressWarnings("DataFlowIssue")
     @Test
     void shouldRejectNullModels() {
-        assertThatThrownBy(() -> new VirtualClusterRegistry(null, noOpCallback))
+        assertThatThrownBy(() -> new VirtualClusterRegistry(null, NO_OP_RESOLVER, noOpCallback))
                 .isInstanceOf(NullPointerException.class);
     }
 
@@ -115,7 +169,15 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldRejectNullCallback() {
         List<VirtualClusterModel> virtualClusterModels = List.of(mockModel(CLUSTER_A));
-        assertThatThrownBy(() -> new VirtualClusterRegistry(virtualClusterModels, null))
+        assertThatThrownBy(() -> new VirtualClusterRegistry(virtualClusterModels, NO_OP_RESOLVER, null))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @SuppressWarnings("DataFlowIssue")
+    @Test
+    void shouldRejectNullRawModelResolver() {
+        List<VirtualClusterModel> virtualClusterModels = List.of(mockModel(CLUSTER_A));
+        assertThatThrownBy(() -> new VirtualClusterRegistry(virtualClusterModels, null, noOpCallback))
                 .isInstanceOf(NullPointerException.class);
     }
 
@@ -124,6 +186,7 @@ class VirtualClusterRegistryTest {
         List<VirtualClusterModel> virtualClusterModels = List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_A));
         assertThatThrownBy(() -> new VirtualClusterRegistry(
                 virtualClusterModels,
+                NO_OP_RESOLVER,
                 noOpCallback))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining(CLUSTER_A);
@@ -207,6 +270,45 @@ class VirtualClusterRegistryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // Model close always runs on the lifecycle thread, never the caller's
+
+    @Test
+    void shouldCloseModelOnLifecycleThreadOnInitializationFailure() {
+        // given
+        var closeThreadName = new AtomicReference<String>();
+        var model = mockModelRecordingCloseThread(CLUSTER_A, closeThreadName);
+        vcc = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+
+        // when
+        vcc.initializationFailed(CLUSTER_A, new RuntimeException("filter init failed"));
+
+        // then
+        verify(model).close();
+        assertThat(Thread.currentThread().getName())
+                .doesNotStartWith(VirtualClusterRegistry.LIFECYCLE_THREAD_NAME_PREFIX);
+        assertThat(closeThreadName.get())
+                .startsWith(VirtualClusterRegistry.LIFECYCLE_THREAD_NAME_PREFIX);
+    }
+
+    @Test
+    void shouldCloseModelOnLifecycleThreadOnShutdown() {
+        // given
+        var closeThreadName = new AtomicReference<String>();
+        var model = mockModelRecordingCloseThread(CLUSTER_A, closeThreadName);
+        vcc = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        vcc.initializationSucceeded(CLUSTER_A);
+
+        // when
+        vcc.shutdownAllClusters();
+
+        // then
+        verify(model).close();
+        assertThat(Thread.currentThread().getName())
+                .doesNotStartWith(VirtualClusterRegistry.LIFECYCLE_THREAD_NAME_PREFIX);
+        assertThat(closeThreadName.get())
+                .startsWith(VirtualClusterRegistry.LIFECYCLE_THREAD_NAME_PREFIX);
+    }
+
     // Bulk shutdown transitions
 
     @Test
@@ -264,7 +366,7 @@ class VirtualClusterRegistryTest {
         // Awaitility times out with a clear assertion failure.
         var pendingDrainA = new CompletableFuture<Void>();
 
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
         vcc.initializationSucceeded(CLUSTER_B);
 
@@ -316,7 +418,7 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldStopServingClustersWhenShuttingDownWithNoConnections() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
 
         // When
@@ -332,7 +434,7 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldStopInitializingClustersWhenShuttingDown() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
 
         // When
@@ -348,7 +450,7 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldStopFailedClustersWhenShuttingDown() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
 
         // Reach Failed state directly on the lifecycle, bypassing VirtualClusterRegistry.initializationFailed()
@@ -373,14 +475,16 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldTransitionPreexistingDrainingClusterToStoppedOnShutdown() {
         // Given — cluster already draining (e.g. from hot-reload) with no active connections
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
-        requireLifecycle(CLUSTER_A).startDraining();
+        var drainFuture = requireLifecycle(CLUSTER_A).startDraining();
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
 
         // When
         vcc.shutdownAllClusters();
 
         // Then — shutdown joins the in-progress drain rather than leaving it in Draining
+        assertThat(drainFuture).isCompleted(); // drain completed when shutdown drove cluster to Stopped
         assertThat(vcc.lifecycleFor(CLUSTER_A))
                 .isNotNull()
                 .extracting(VirtualClusterLifecycle::state)
@@ -390,28 +494,31 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldFireCallbackForPreexistingDrainingClusterOnShutdown() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
-        requireLifecycle(CLUSTER_A).startDraining();
+        var drainFuture = requireLifecycle(CLUSTER_A).startDraining();
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
 
         // When
         vcc.shutdownAllClusters();
 
         // Then
+        assertThat(drainFuture).isCompleted(); // still completed after shutdown
         verify(noOpCallback).accept(CLUSTER_A, Optional.empty());
     }
 
     @Test
     void shouldWaitForPreexistingDrainToCompleteBeforeShuttingDown() {
         // Given — cluster draining with a pending connection
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), NO_OP_RESOLVER, noOpCallback);
         vcc.initializationSucceeded(CLUSTER_A);
 
         var pendingDrain = new CompletableFuture<Void>();
         var ccsm = mock(ClientConnectionStateMachine.class);
         when(ccsm.drain(any())).thenReturn(pendingDrain);
         vcc.registerConnection(CLUSTER_A, ccsm);
-        requireLifecycle(CLUSTER_A).startDraining();
+        var drainFuture = requireLifecycle(CLUSTER_A).startDraining();
+        assertThat(drainFuture).isNotDone(); // drain is pending — active connection blocks completion
 
         // shutdownAllClusters() blocks, so run it asynchronously
         var shutdown = CompletableFuture.runAsync(() -> vcc.shutdownAllClusters());
@@ -437,7 +544,7 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldLeaveAlreadyStoppedClustersWhenShuttingDown() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), NO_OP_RESOLVER, noOpCallback);
 
         // Force into Stopped directly, bypassing the coordinator's auto-stop logic.
         requireLifecycle(CLUSTER_A).stop();
@@ -455,7 +562,7 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldNotFireCallbackForAlreadyStoppedClustersWhenShuttingDown() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A)), NO_OP_RESOLVER, noOpCallback);
         requireLifecycle(CLUSTER_A).stop();
 
         // When
@@ -477,7 +584,7 @@ class VirtualClusterRegistryTest {
 
         vcc = new VirtualClusterRegistry(
                 List.of(mockModel(serving), mockModel(initializing), mockModel(draining), mockModel(failed), mockModel(stopped)),
-                noOpCallback);
+                NO_OP_RESOLVER, noOpCallback);
 
         vcc.initializationSucceeded(serving);
 
@@ -485,7 +592,8 @@ class VirtualClusterRegistryTest {
         // auto-stop logic to simulate states that will be reachable via the normal API
         // once hot-reload and retry/rollback are implemented.
         requireLifecycle(draining).initializationSucceeded();
-        requireLifecycle(draining).startDraining();
+        var drainFuture = requireLifecycle(draining).startDraining();
+        assertThat(drainFuture).isCompletedWithValue(null); // no active connections — drain completes immediately
         requireLifecycle(failed).initializationFailed(failureCause);
         requireLifecycle(stopped).initializationFailed(failureCause);
         requireLifecycle(stopped).stop();
@@ -508,7 +616,7 @@ class VirtualClusterRegistryTest {
     @Test
     void shouldStopInitialisingWhenShuttingDown() {
         // Given
-        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), noOpCallback);
+        vcc = new VirtualClusterRegistry(List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), NO_OP_RESOLVER, noOpCallback);
 
         // When
         vcc.shutdownAllClusters();
@@ -637,11 +745,8 @@ class VirtualClusterRegistryTest {
     }
 
     // -----------------------------------------------------------------------------------------
-    // Reconfigure operations. removeVirtualCluster is the first to be made real (step 1 of
-    // the hot-reload staircase); replaceVirtualCluster and addVirtualCluster remain no-op
-    // stubs until later steps land them. The stub tests below pin the contract: each stub
-    // completes its future immediately without mutating registry state, so the orchestrator
-    // can drive the full pipeline against this class while only some operations are real.
+    // Reconfigure operations: addVirtualCluster and removeVirtualCluster. Modify is delegated
+    // to ReplaceCluster which composes remove + add — there is no dedicated VCR method for it.
     // -----------------------------------------------------------------------------------------
 
     @Test
@@ -662,7 +767,7 @@ class VirtualClusterRegistryTest {
     void removeVirtualClusterLeavesOtherClustersUnaffected() {
         // given — two serving clusters in one registry
         var registry = new VirtualClusterRegistry(
-                List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), noOpCallback);
+                List.of(mockModel(CLUSTER_A), mockModel(CLUSTER_B)), NO_OP_RESOLVER, noOpCallback);
         registry.initializationSucceeded(CLUSTER_A);
         registry.initializationSucceeded(CLUSTER_B);
 
@@ -684,47 +789,30 @@ class VirtualClusterRegistryTest {
         // when
         vcc.removeVirtualCluster(CLUSTER_A).join();
 
-        // then — callback invoked with (clusterName, Optional.empty()) per the no-failure case
+        // then
         verify(noOpCallback).accept(CLUSTER_A, Optional.empty());
     }
 
     @Test
     void removeVirtualClusterIsNoOpWhenAlreadyStopped() {
-        // given — drive the cluster to Stopped via the normal remove path
+        // given
         vcc.initializationSucceeded(CLUSTER_A);
         vcc.removeVirtualCluster(CLUSTER_A).join();
         assertThat(requireLifecycle(CLUSTER_A).state()).isInstanceOf(VirtualClusterLifecycleState.Stopped.class);
 
-        // when — call remove again on an already-Stopped cluster
+        // when
         var future = vcc.removeVirtualCluster(CLUSTER_A);
 
-        // then — completes immediately, no exception
+        // then
         assertThat(future).succeedsWithin(1, TimeUnit.SECONDS);
         assertThat(requireLifecycle(CLUSTER_A).state()).isInstanceOf(VirtualClusterLifecycleState.Stopped.class);
     }
 
     @Test
     void removeVirtualClusterThrowsForUnknownClusterName() {
-        // The real removeVirtualCluster validates via requireKnownCluster, unlike the previous
-        // stub which silently accepted unknown names.
         assertThatThrownBy(() -> vcc.removeVirtualCluster("never-existed"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown cluster");
-    }
-
-    @Test
-    void replaceVirtualClusterStubReturnsCompletedFutureWithoutMutatingState() {
-        // given
-        vcc.initializationSucceeded(CLUSTER_A);
-        var lifecycleBefore = vcc.lifecycleFor(CLUSTER_A);
-        var newModel = mockModel(CLUSTER_A);
-
-        // when
-        var future = vcc.replaceVirtualCluster(CLUSTER_A, newModel);
-
-        // then
-        assertThat(future).isCompleted();
-        assertThat(vcc.lifecycleFor(CLUSTER_A)).isSameAs(lifecycleBefore);
     }
 
     @Test
@@ -736,8 +824,7 @@ class VirtualClusterRegistryTest {
         // when
         var future = vcc.addVirtualCluster(newModel);
 
-        // then — future already completed; lifecycle exists in INITIALIZING (orchestrator will
-        // call initializationSucceeded once gateways are bound).
+        // then
         assertThat(future).isCompleted();
         assertThat(vcc.lifecycleFor(CLUSTER_B)).isNotNull()
                 .extracting(VirtualClusterLifecycle::state)
@@ -745,12 +832,34 @@ class VirtualClusterRegistryTest {
     }
 
     @Test
-    void addVirtualClusterRejectsDuplicateName() {
-        // CLUSTER_A is already present from setUp
+    void addVirtualClusterRejectsDuplicateNameWhenExistingEntryIsActive() {
+        // CLUSTER_A is in INITIALIZING after setUp — re-adding it is a contract violation.
         var duplicate = mockModel(CLUSTER_A);
         assertThatThrownBy(() -> vcc.addVirtualCluster(duplicate))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining(CLUSTER_A);
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(CLUSTER_A)
+                .hasMessageContaining("Initializing");
+    }
+
+    @Test
+    void addVirtualClusterReplacesStoppedEntry() {
+        // ReplaceCluster's add half lands here: the remove half drove the cluster to Stopped
+        // (entry retained per shutdownCluster's append-only policy), and the add half then
+        // calls addVirtualCluster with the new model — which must succeed and replace the
+        // dead entry with a fresh INITIALIZING lifecycle.
+        vcc.removeVirtualCluster(CLUSTER_A).join();
+        var freshModel = mockModel(CLUSTER_A);
+
+        var future = vcc.addVirtualCluster(freshModel);
+
+        assertThat(future).isCompleted();
+        assertThat(vcc.lifecycleFor(CLUSTER_A)).isNotNull()
+                .extracting(VirtualClusterLifecycle::state)
+                .as("re-added cluster's lifecycle should be a fresh Initializing instance")
+                .isInstanceOf(VirtualClusterLifecycleState.Initializing.class);
+        assertThat(vcc.virtualClusterModels())
+                .as("virtualClusterModels reports the new model, not the stale one")
+                .containsExactly(freshModel);
     }
 
     @SuppressWarnings("DataFlowIssue")
@@ -761,21 +870,22 @@ class VirtualClusterRegistryTest {
     }
 
     @Test
-    void virtualClusterModelsReflectsRuntimeAddedModel() {
-        // Contract relied on by RemoveCluster#originalGateways: a model handed to
-        // addVirtualCluster appears in virtualClusterModels() so a subsequent reconfigure can
-        // resolve its gateways.
+    void virtualClusterModelsReflectsRuntimeAddedModel() throws Exception {
+        // Contract relied on by OperationsPlanner: a model handed to addVirtualCluster appears
+        // in virtualClusterModels() so a subsequent reconfigure can resolve it by name.
         var addedModel = mockModel(CLUSTER_B);
 
-        vcc.addVirtualCluster(addedModel);
+        vcc.addVirtualCluster(addedModel).get(5, TimeUnit.SECONDS);
 
+        // Order is unspecified (backing map is ConcurrentHashMap); both the constructor-supplied
+        // model and the runtime-added one must be present.
         assertThat(vcc.virtualClusterModels())
-                .as("constructor-supplied CLUSTER_A then the runtime-added addedModel, in insertion order")
+                .as("models for both the constructor-supplied and runtime-added clusters are present")
                 .extracting(VirtualClusterModel::getClusterName)
-                .containsExactly(CLUSTER_A, CLUSTER_B);
+                .containsExactlyInAnyOrder(CLUSTER_A, CLUSTER_B);
         assertThat(vcc.virtualClusterModels())
                 .as("runtime-added model identity is preserved (same reference, not a copy)")
-                .last().isSameAs(addedModel);
+                .contains(addedModel);
     }
 
     @Test
@@ -792,6 +902,332 @@ class VirtualClusterRegistryTest {
                 .as("constructor-supplied model should remain queryable after removeVirtualCluster")
                 .extracting(VirtualClusterModel::getClusterName)
                 .containsExactly(CLUSTER_A);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // closeModel hook — pins the per-VC resource cleanup contract added by the FCF-per-VC
+    // refactor. Each of the four transition-into-Stopped branches in shutdownCluster must
+    // invoke model.close(); the Stopped→Stopped no-op must not. Close failure must not stall
+    // the shutdown future or block the onVirtualClusterStopped callback.
+    // -----------------------------------------------------------------------------------------
+
+    @Test
+    void shouldCloseModelWhenServingClusterIsRemoved() {
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        registry.initializationSucceeded(CLUSTER_A);
+
+        registry.removeVirtualCluster(CLUSTER_A).join();
+
+        verify(model).close();
+    }
+
+    @Test
+    void shouldCloseModelWhenInitializingClusterIsShutDown() {
+        // Initializing state — the cluster never reached Serving but still owns FCF/TLS resources.
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+
+        registry.shutdownAllClusters();
+
+        verify(model).close();
+    }
+
+    @Test
+    void shouldCloseModelWhenFailedClusterIsShutDown() {
+        // Drive directly to Failed via the lifecycle, bypassing the registry's auto-stop, so the
+        // shutdownAllClusters call exercises the Failed→Stopped close branch.
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        var failureCause = new RuntimeException("init failed");
+        var lifecycle = registry.lifecycleFor(CLUSTER_A);
+        Assumptions.assumeThat(lifecycle).isNotNull();
+        lifecycle.initializationFailed(failureCause);
+
+        registry.shutdownAllClusters();
+
+        verify(model).close();
+    }
+
+    @Test
+    void shouldCloseModelOnInitializationFailure() {
+        // initializationFailed drives the lifecycle straight to Stopped; shutdownCluster
+        // short-circuits on Stopped without closing, so initializationFailed itself must close
+        // the model or the filters/routers initialized during model construction leak forever.
+        // given
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+
+        // when
+        registry.initializationFailed(CLUSTER_A, new RuntimeException("bind failed"));
+
+        // then
+        verify(model).close();
+    }
+
+    @Test
+    void shouldNotCloseModelAgainOnShutdownAfterInitializationFailure() {
+        // given
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        registry.initializationFailed(CLUSTER_A, new RuntimeException("bind failed"));
+        verify(model, times(1)).close();
+
+        // when
+        registry.shutdownAllClusters();
+
+        // then
+        verify(model, times(1)).close();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldFireCallbackWithInitializationCauseEvenWhenModelCloseThrows() {
+        // The close failure is secondary (logged by closeModel); the callback still fires with
+        // the original initialization cause — the failure the operator needs to see — and
+        // initializationFailed itself must not throw so callers can proceed with rollback.
+        // given
+        var initFailure = new RuntimeException("bind failed");
+        var model = mockModel(CLUSTER_A);
+        doThrow(new RuntimeException("close failed")).when(model).close();
+        BiConsumer<String, Optional<Throwable>> callback = mock(BiConsumer.class);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, callback);
+
+        // when / then
+        assertThatCode(() -> registry.initializationFailed(CLUSTER_A, initFailure))
+                .doesNotThrowAnyException();
+
+        verify(model).close();
+        verify(callback).accept(CLUSTER_A, Optional.of(initFailure));
+    }
+
+    @Test
+    void shouldCloseModelWhenDrainingClusterCompletesDrain() {
+        // Close must fire only after the drain completes — not at drain start. Mocks the connection's
+        // drain future so we can hold the cluster in Draining and assert close has not yet fired.
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        registry.initializationSucceeded(CLUSTER_A);
+
+        var pendingDrain = new CompletableFuture<Void>();
+        var ccsm = mock(ClientConnectionStateMachine.class);
+        when(ccsm.drain(any())).thenReturn(pendingDrain);
+        registry.registerConnection(CLUSTER_A, ccsm);
+
+        var shutdown = CompletableFuture.runAsync(registry::shutdownAllClusters);
+
+        Awaitility.await("drain should be initiated while cluster is Draining")
+                .atMost(5, TimeUnit.SECONDS)
+                .untilAsserted(() -> verify(ccsm).drain(any()));
+
+        // While still Draining, close must not have fired yet
+        verify(model, never()).close();
+
+        // Complete the drain — close should now fire on the Draining→Stopped transition
+        pendingDrain.complete(null);
+
+        assertThat(shutdown).succeedsWithin(5, TimeUnit.SECONDS);
+        verify(model).close();
+    }
+
+    @Test
+    void shouldCloseFreshModelAfterReAddOfStoppedCluster() throws Exception {
+        // Hot-reload scenario: cluster goes Serving → Stopped (model M1 closed and tracked as
+        // closed by name), then a re-add via addVirtualCluster replaces the entry with a fresh
+        // model M2. A subsequent shutdown of the re-added cluster MUST close M2 — the
+        // closedClusters guard must not block it just because the same cluster name was
+        // previously closed.
+        var firstModel = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(firstModel), NO_OP_RESOLVER, noOpCallback);
+        registry.initializationSucceeded(CLUSTER_A);
+        registry.removeVirtualCluster(CLUSTER_A).join();
+        verify(firstModel).close();
+
+        // Re-add with a fresh model under the same cluster name (ReplaceCluster's add half).
+        var freshModel = mockModel(CLUSTER_A);
+        registry.addVirtualCluster(freshModel).get(5, TimeUnit.SECONDS);
+        registry.initializationSucceeded(CLUSTER_A);
+
+        // Drive the re-added cluster to Stopped — its fresh model must be closed.
+        registry.removeVirtualCluster(CLUSTER_A).join();
+        verify(freshModel).close();
+    }
+
+    @Test
+    void shouldNotCloseAlreadyStoppedModelOnRedundantShutdown() {
+        // The Stopped→Stopped no-op branch must not invoke close again. Without this guarantee,
+        // the FCF's per-Wrapper AtomicBoolean would absorb the double-close, but the
+        // TlsCredentialSupplierManager might not, and a future close-handler addition could
+        // throw on double-invocation.
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        registry.initializationSucceeded(CLUSTER_A);
+
+        registry.removeVirtualCluster(CLUSTER_A).join();
+        verify(model, times(1)).close();
+
+        registry.removeVirtualCluster(CLUSTER_A).join();
+
+        verify(model, times(1)).close();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldFireStoppedCallbackEvenWhenModelCloseThrows() {
+        // closeModel logs and propagates the close failure — the onVirtualClusterStopped callback
+        // still fires (with the failure as cause) so the cluster is acknowledged as stopped,
+        // but the shutdown future completes exceptionally so callers know the close was not clean.
+        var closeFailure = new RuntimeException("KMS shutdown failed");
+        var model = mockModel(CLUSTER_A);
+        doThrow(closeFailure).when(model).close();
+        BiConsumer<String, Optional<Throwable>> callback = mock(BiConsumer.class);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, callback);
+        registry.initializationSucceeded(CLUSTER_A);
+
+        var shutdown = registry.removeVirtualCluster(CLUSTER_A);
+
+        assertThat(shutdown).failsWithin(5, TimeUnit.SECONDS);
+        verify(model).close();
+        verify(callback).accept(CLUSTER_A, Optional.of(closeFailure));
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Threading contract for resolveModel
+    //
+    // The structural claim VCR makes to plugin authors is that FilterFactory.initialize() (called
+    // transitively from the rawResolver during resolveModel) never runs on a Netty event loop —
+    // it runs on the dedicated lifecycle thread.
+    // ------------------------------------------------------------------------------------------
+
+    @Test
+    void resolveModelRunsRawResolverOffCallerThread() {
+        // given — a resolver that captures the thread on which it executes
+        var callerThread = Thread.currentThread();
+        var capturedThread = new AtomicReference<Thread>();
+        BiFunction<Configuration, String, VirtualClusterModel> capturingResolver = (cfg, name) -> {
+            capturedThread.set(Thread.currentThread());
+            return mockModel(name);
+        };
+        var registry = new VirtualClusterRegistry(List.of(), capturingResolver, noOpCallback);
+
+        // when
+        registry.resolveModel(mock(Configuration.class), CLUSTER_A);
+
+        // then — the resolver ran on a thread that is NOT the caller's thread and DOES match the
+        // lifecycle-thread name prefix. This is the structural no-event-loop guarantee.
+        assertThat(capturedThread.get()).isNotSameAs(callerThread);
+        assertThat(capturedThread.get().getName()).startsWith(VirtualClusterRegistry.LIFECYCLE_THREAD_NAME_PREFIX);
+    }
+
+    @Test
+    void resolveModelPropagatesRuntimeExceptionUnwrapped() {
+        // given — a resolver that throws a specific RuntimeException
+        var cause = new IllegalStateException("plugin init failed");
+        BiFunction<Configuration, String, VirtualClusterModel> failingResolver = (cfg, name) -> {
+            throw cause;
+        };
+        var registry = new VirtualClusterRegistry(List.of(), failingResolver, noOpCallback);
+
+        // when / then — the same RuntimeException instance is rethrown, NOT wrapped in
+        // CompletionException. AddCluster relies on this for catch-by-type when surfacing
+        // per-cluster ReconfigureError causes.
+        assertThatThrownBy(() -> registry.resolveModel(mock(Configuration.class), CLUSTER_A))
+                .isSameAs(cause);
+    }
+
+    @Test
+    void resolveModelKeepsLifecycleThreadAliveAfterResolverError() {
+        // given — a resolver that throws on the first call and succeeds on every subsequent call.
+        // Capture the thread on both calls so we can prove the executor's single worker survives.
+        var callCount = new AtomicInteger();
+        var firstThread = new AtomicReference<Thread>();
+        var secondThread = new AtomicReference<Thread>();
+        BiFunction<Configuration, String, VirtualClusterModel> flakyResolver = (cfg, name) -> {
+            var n = callCount.incrementAndGet();
+            if (n == 1) {
+                firstThread.set(Thread.currentThread());
+                throw new RuntimeException("first call fails");
+            }
+            secondThread.set(Thread.currentThread());
+            return mockModel(name);
+        };
+        var registry = new VirtualClusterRegistry(List.of(), flakyResolver, noOpCallback);
+
+        // when — first call fails, second call must still complete on the same thread
+        assertThatThrownBy(() -> registry.resolveModel(mock(Configuration.class), CLUSTER_A))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("first call fails");
+        var result = registry.resolveModel(mock(Configuration.class), CLUSTER_B);
+
+        // then — second call succeeded AND landed on the same thread as the first. Same-thread
+        // proves the executor's worker was not silently replaced (which would mask a Throwable
+        // escape that killed the original worker).
+        assertThat(result).isNotNull();
+        assertThat(secondThread.get())
+                .as("lifecycle thread should survive a resolver failure")
+                .isSameAs(firstThread.get());
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // transitionToStoppedAndClose — concurrent-dispatch dedup and unexpected-state handling.
+    // These exercise branches that are unreachable through normal single-threaded test paths
+    // because the outer shutdownCluster state check short-circuits before dispatch.
+    // ------------------------------------------------------------------------------------------
+
+    @Test
+    void transitionToStoppedAndCloseNoOpsWhenAlreadyStopped() {
+        // given — a cluster already in Stopped (simulates a concurrent dispatch having beaten
+        // this one through the lifecycle thread)
+        var model = mockModel(CLUSTER_A);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, noOpCallback);
+        var lifecycle = registry.lifecycleFor(CLUSTER_A);
+        Assumptions.assumeThat(lifecycle).isNotNull();
+        lifecycle.initializationFailed(new RuntimeException("boom"));
+        lifecycle.stop();
+
+        // when — a stale dispatched task lands here after another path already drove to Stopped
+        registry.transitionToStoppedAndClose(CLUSTER_A, lifecycle);
+
+        // then — silent no-op; model.close not re-invoked, no callback fired
+        verify(model, never()).close();
+        verifyNoInteractions(noOpCallback);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void transitionToStoppedAndCloseThrowsWhenObservingServingState() {
+        // given — a cluster in Serving (the unexpected state for this method, which only ever
+        // expects Draining / Failed / Initializing / Stopped on entry)
+        var model = mockModel(CLUSTER_A);
+        BiConsumer<String, Optional<Throwable>> callback = mock(BiConsumer.class);
+        var registry = new VirtualClusterRegistry(List.of(model), NO_OP_RESOLVER, callback);
+        var lifecycle = registry.lifecycleFor(CLUSTER_A);
+        Assumptions.assumeThat(lifecycle).isNotNull();
+        lifecycle.initializationSucceeded();
+
+        // when — direct invocation simulates the race where initializationSucceeded() raced
+        // with our dispatch (left the cluster in Serving when transitionToStoppedAndClose ran)
+        assertThatThrownBy(() -> registry.transitionToStoppedAndClose(CLUSTER_A, lifecycle))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("transitionToStoppedAndClose")
+                .hasMessageContaining(CLUSTER_A)
+                .hasMessageContaining("Serving");
+
+        // then — fail fast without closing the model or firing the stopped callback.
+        verify(model, never()).close();
+        verifyNoInteractions(callback);
+    }
+
+    @Test
+    void closeIsIdempotentAndShutsDownLifecycleExecutor() {
+        // given
+        var registry = new VirtualClusterRegistry(List.of(), NO_OP_RESOLVER, noOpCallback);
+
+        // when / then — first close completes without throwing
+        assertThatCode(registry::close).doesNotThrowAnyException();
+
+        // second close is a no-op (already-shutdown executor's shutdown call is idempotent)
+        assertThatCode(registry::close).doesNotThrowAnyException();
     }
 
 }

@@ -9,18 +9,17 @@ package io.kroxylicious.kafka.transform;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 
-import org.apache.kafka.common.compress.Compression;
-import org.apache.kafka.common.header.Header;
-import org.apache.kafka.common.record.EndTransactionMarker;
-import org.apache.kafka.common.record.MemoryRecords;
-import org.apache.kafka.common.record.MemoryRecordsBuilder;
-import org.apache.kafka.common.record.MutableRecordBatch;
-import org.apache.kafka.common.record.Record;
-import org.apache.kafka.common.record.RecordBatch;
-import org.apache.kafka.common.record.SimpleRecord;
-import org.apache.kafka.common.record.TimestampType;
-import org.apache.kafka.common.utils.ByteBufferOutputStream;
-
+import io.kroxylicious.kafka.common.compress.Compression;
+import io.kroxylicious.kafka.common.header.Header;
+import io.kroxylicious.kafka.common.record.TimestampType;
+import io.kroxylicious.kafka.common.record.internal.EndTransactionMarker;
+import io.kroxylicious.kafka.common.record.internal.MemoryRecords;
+import io.kroxylicious.kafka.common.record.internal.MemoryRecordsBuilder;
+import io.kroxylicious.kafka.common.record.internal.MutableRecordBatch;
+import io.kroxylicious.kafka.common.record.internal.Record;
+import io.kroxylicious.kafka.common.record.internal.RecordBatch;
+import io.kroxylicious.kafka.common.record.internal.SimpleRecord;
+import io.kroxylicious.kafka.common.utils.ByteBufferOutputStream;
 import io.kroxylicious.proxy.tag.NotThreadSafe;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
@@ -66,18 +65,18 @@ public class BatchAwareMemoryRecordsBuilder {
     /**
      * Starts a batch
      *
-     * @param magic
-     * @param compression
-     * @param timestampType
-     * @param baseOffset
-     * @param logAppendTime
-     * @param producerId
-     * @param producerEpoch
-     * @param baseSequence
-     * @param isTransactional
-     * @param isControlBatch
-     * @param partitionLeaderEpoch
-     * @param deleteHorizonMs
+     * @param magic the record batch magic byte
+     * @param compression the compression type of the batch
+     * @param timestampType the timestamp type of the batch
+     * @param baseOffset the base offset of the batch
+     * @param logAppendTime the log append time of the batch
+     * @param producerId the producer id
+     * @param producerEpoch the producer epoch
+     * @param baseSequence the base sequence number
+     * @param isTransactional whether the batch is transactional
+     * @param isControlBatch whether the batch is a control batch
+     * @param partitionLeaderEpoch the partition leader epoch
+     * @param deleteHorizonMs the delete horizon timestamp in milliseconds
      * @return this builder
      */
     public BatchAwareMemoryRecordsBuilder addBatch(byte magic,
@@ -112,6 +111,14 @@ public class BatchAwareMemoryRecordsBuilder {
         return this;
     }
 
+    /**
+     * Starts a batch with the current magic value and defaults for the remaining batch parameters.
+     *
+     * @param compression the compression type of the batch
+     * @param timestampType the timestamp type of the batch
+     * @param baseOffset the base offset of the batch
+     * @return this builder
+     */
     public BatchAwareMemoryRecordsBuilder addBatch(Compression compression,
                                                    TimestampType timestampType,
                                                    long baseOffset) {
@@ -250,6 +257,13 @@ public class BatchAwareMemoryRecordsBuilder {
         return this;
     }
 
+    /**
+     * Appends a control record at the given offset in the current batch.
+     *
+     * @param offset The absolute offset of the record in the log buffer
+     * @param record The control record to append
+     * @return This builder
+     */
     public BatchAwareMemoryRecordsBuilder appendControlRecordWithOffset(long offset, SimpleRecord record) {
         checkIfClosed();
         checkHasBatch();
@@ -257,6 +271,13 @@ public class BatchAwareMemoryRecordsBuilder {
         return this;
     }
 
+    /**
+     * Appends an end transaction marker to the current batch.
+     *
+     * @param timestamp The timestamp of the marker record
+     * @param marker The end transaction marker to append
+     * @return This builder
+     */
     public BatchAwareMemoryRecordsBuilder appendEndTxnMarker(long timestamp,
                                                              EndTransactionMarker marker) {
         checkIfClosed();

@@ -71,7 +71,6 @@ import io.kroxylicious.testing.operator.assertj.VirtualKafkaClusterStatusAssert;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 
-import static io.kroxylicious.kubernetes.operator.ResourcesUtil.findOnlyResourceNamed;
 import static io.kroxylicious.kubernetes.operator.ResourcesUtil.toByNameMap;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
@@ -123,35 +122,6 @@ class ResourcesUtilTest {
         assertThat(ResourcesUtil.isDnsLabel("-1", false)).isFalse();
         assertThat(ResourcesUtil.isDnsLabel("a".repeat(63), false)).isTrue();
         assertThat(ResourcesUtil.isDnsLabel("a".repeat(64), false)).isFalse();
-    }
-
-    @Test
-    void findOnlyResourceNamedWithEmptyCollection() {
-        Optional<HasMetadata> resource = findOnlyResourceNamed(RESOURCE_NAME, Set.of());
-        assertThat(resource).isEmpty();
-    }
-
-    @Test
-    void findOnlyResourceNamedWithNoMatches() {
-        Secret other = new SecretBuilder().withNewMetadata().withName("other").endMetadata().build();
-        Optional<HasMetadata> resource = findOnlyResourceNamed(RESOURCE_NAME, Set.of(other));
-        assertThat(resource).isEmpty();
-    }
-
-    @Test
-    void findOnlyResourceNamedWithMatch() {
-        Secret other = new SecretBuilder().withNewMetadata().withName(RESOURCE_NAME).endMetadata().build();
-        Optional<HasMetadata> resource = findOnlyResourceNamed(RESOURCE_NAME, Set.of(other));
-        assertThat(resource).isNotEmpty().contains(other);
-    }
-
-    @Test
-    void findOnlyResourceNamedWithMultipleMatch() {
-        Secret other = new SecretBuilder().withNewMetadata().withName(RESOURCE_NAME).endMetadata().build();
-        List<HasMetadata> withMultipleSameName = List.of(other, other);
-        assertThatThrownBy(() -> {
-            findOnlyResourceNamed(RESOURCE_NAME, withMultipleSameName);
-        }).isInstanceOf(IllegalStateException.class).hasMessage("collection contained more than one resource named " + RESOURCE_NAME);
     }
 
     @Test
@@ -402,6 +372,19 @@ class ResourcesUtilTest {
         String namespace = "namespace";
         Secret secret = new SecretBuilder().withNewMetadata().withNamespace(namespace).endMetadata().build();
         assertThat(ResourcesUtil.namespace(secret)).isEqualTo(namespace);
+    }
+
+    @Test
+    void namespaceForShouldDefaultToOwnerNamespaceOnlyWhenOmitted() {
+        var service = new KafkaServiceBuilder()
+                .withNewMetadata()
+                .withNamespace("service-namespace")
+                .endMetadata()
+                .build();
+
+        assertThat(ResourcesUtil.namespaceFor(service, null)).isEqualTo("service-namespace");
+        assertThat(ResourcesUtil.namespaceFor(service, "")).isEmpty();
+        assertThat(ResourcesUtil.namespaceFor(service, "strimzi-namespace")).isEqualTo("strimzi-namespace");
     }
 
     @Test
@@ -814,19 +797,25 @@ class ResourcesUtilTest {
                                                       String expectedCondition,
                                                       ThrowingConsumer<String> stringThrowingConsumer) {
         // Given
-        KafkaService service = new KafkaServiceBuilder().withNewSpec().withStrimziKafkaRef(strimziKafkaRef).endSpec().build();
+        KafkaService service = new KafkaServiceBuilder()
+                .withNewMetadata()
+                .withNamespace("service-namespace")
+                .endMetadata()
+                .withNewSpec()
+                .withStrimziKafkaRef(strimziKafkaRef)
+                .endSpec()
+                .build();
         @SuppressWarnings("unchecked")
         Context<KafkaService> reconcilerContext = mock(Context.class);
         KubernetesClient client = mock();
         when(reconcilerContext.getClient()).thenReturn(client);
         when(reconcilerContext.getClient().supports(Kafka.class)).thenReturn(true);
-        when(reconcilerContext.getSecondaryResource(Kafka.class, KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME))
-                .thenReturn(Optional.ofNullable(kafka));
+        when(reconcilerContext.getSecondaryResource(Kafka.class, KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME)).thenReturn(Optional.ofNullable(kafka));
 
         // When
         ResourceCheckResult<KafkaService> actual = ResourcesUtil.checkStrimziKafkaRef(service, reconcilerContext,
-                KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME, strimziKafkaRef,
-                "spec.strimziKafkaRef", KafkaServiceReconciler.newStatusFactory(TEST_CLOCK));
+                KafkaServiceReconciler.STRIMZI_KAFKA_EVENT_SOURCE_NAME,
+                strimziKafkaRef, "spec.strimziKafkaRef", KafkaServiceReconciler.newStatusFactory(TEST_CLOCK));
 
         // Then
         assertThat(actual)
@@ -1041,17 +1030,15 @@ class ResourcesUtilTest {
                 .build();
 
         Context<KafkaService> context = mock();
-        KubernetesClient client = mock();
-        when(context.getClient()).thenReturn(client);
-        when(client.secrets()).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace)).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert")).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert").get()).thenReturn(clusterCaSecret);
+        when(context.getSecondaryResource(Secret.class, KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME))
+                .thenReturn(Optional.of(clusterCaSecret));
 
         StatusFactory<KafkaService> statusFactory = KafkaServiceReconciler.newStatusFactory(TEST_CLOCK);
 
         // When
-        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context, strimziKafkaRef, statusFactory);
+        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context,
+                KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME,
+                strimziKafkaRef, statusFactory);
 
         // Then
         assertThat(result.resource()).isNull();
@@ -1083,17 +1070,14 @@ class ResourcesUtilTest {
                 .build();
 
         Context<KafkaService> context = mock();
-        KubernetesClient client = mock();
-        when(context.getClient()).thenReturn(client);
-        when(client.secrets()).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace)).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert")).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert").get()).thenReturn(null);
+        when(context.getSecondaryResource(Secret.class, KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME)).thenReturn(Optional.empty());
 
         StatusFactory<KafkaService> statusFactory = KafkaServiceReconciler.newStatusFactory(TEST_CLOCK);
 
         // When
-        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context, strimziKafkaRef, statusFactory);
+        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context,
+                KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME,
+                strimziKafkaRef, statusFactory);
 
         // Then
         assertThat(result.resource()).isNotNull();
@@ -1139,17 +1123,15 @@ class ResourcesUtilTest {
                 .build();
 
         Context<KafkaService> context = mock();
-        KubernetesClient client = mock();
-        when(context.getClient()).thenReturn(client);
-        when(client.secrets()).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace)).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert")).thenReturn(mock());
-        when(client.secrets().inNamespace(namespace).withName(kafkaName + "-cluster-ca-cert").get()).thenReturn(clusterCaSecret);
+        when(context.getSecondaryResource(Secret.class, KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME))
+                .thenReturn(Optional.of(clusterCaSecret));
 
         StatusFactory<KafkaService> statusFactory = KafkaServiceReconciler.newStatusFactory(TEST_CLOCK);
 
         // When
-        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context, strimziKafkaRef, statusFactory);
+        ResourceCheckResult<KafkaService> result = ResourcesUtil.checkStrimziTrustAnchor(service, context,
+                KafkaServiceReconciler.SECRETS_STRIMZI_TRUST_ANCHOR_REF_EVENT_SOURCE_NAME,
+                strimziKafkaRef, statusFactory);
 
         // Then
         assertThat(result.resource()).isNotNull();

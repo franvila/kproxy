@@ -12,39 +12,38 @@ import java.util.Set;
 
 import org.assertj.core.api.Assertions;
 import org.awaitility.core.ConditionFactory;
-import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.api.extension.RegisterExtension;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.fabric8.kubernetes.api.model.ConfigMap;
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.SecretBuilder;
-import io.javaoperatorsdk.operator.junit.LocallyRunOperatorExtension;
 
 import io.kroxylicious.kubernetes.api.common.Condition;
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaService;
 import io.kroxylicious.kubernetes.api.v1alpha1.KafkaServiceBuilder;
 import io.kroxylicious.kubernetes.operator.Annotations;
-import io.kroxylicious.kubernetes.operator.LocallyRunningOperatorRbacHandler;
 import io.kroxylicious.kubernetes.operator.ResourcesUtil;
-import io.kroxylicious.kubernetes.operator.TestFiles;
 import io.kroxylicious.kubernetes.operator.informer.SharedInformerManager;
+import io.kroxylicious.testing.operator.ClusterUser;
+import io.kroxylicious.testing.operator.LocalKroxyliciousOperatorExtension;
+import io.kroxylicious.testing.operator.OperatorTestUtils;
 import io.kroxylicious.testing.operator.assertj.OperatorAssertions;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
 import static io.kroxylicious.kubernetes.operator.checksum.MetadataChecksumGenerator.NO_CHECKSUM_SPECIFIED;
+import static io.kroxylicious.testing.operator.OperatorTestUtils.uniqueSuffix;
 import static io.kroxylicious.testing.operator.assertj.OperatorAssertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-@EnabledIf(value = "io.kroxylicious.kubernetes.operator.OperatorTestUtils#isKubeClientAvailable", disabledReason = "no viable kube client available")
+@EnabledIf(value = "io.kroxylicious.testing.operator.OperatorTestUtils#isKubeClientAvailable", disabledReason = "no viable kube client available")
+@SuppressWarnings("java:S8692") // ITs run against a live API server; a fixed clock would be misleading since time is not controlled
 class KafkaServiceBootstrapReconcilerIT {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(KafkaServiceBootstrapReconcilerIT.class);
     public static final String FOO_BOOTSTRAP_9090 = "foo.bootstrap:9090";
     private static final String BAR_BOOTSTRAP_9090 = "bar.bootstrap:9090";
     public static final String SERVICE_A = "service-a";
@@ -54,36 +53,29 @@ class KafkaServiceBootstrapReconcilerIT {
 
     private static final ConditionFactory AWAIT = await().timeout(Duration.ofSeconds(60));
 
-    @RegisterExtension
-    static LocallyRunningOperatorRbacHandler rbacHandler = new LocallyRunningOperatorRbacHandler(TestFiles.INSTALL_MANIFESTS_DIR,
-            "*.ClusterRole.kroxylicious-operator-watched.yaml");
+    private static final SharedInformerManager sharedInformerManager = new SharedInformerManager(OperatorTestUtils.kubeClient(), Set.of());
 
-    static final SharedInformerManager sharedInformerManager = new SharedInformerManager(rbacHandler.operatorClient(), Set.of());
-
-    @SuppressWarnings("JUnitMalformedDeclaration") // The beforeAll and beforeEach have the same effect so we can use it as an instance field.
     @RegisterExtension
-    LocallyRunOperatorExtension extension = LocallyRunOperatorExtension.builder()
+    static LocalKroxyliciousOperatorExtension operator = LocalKroxyliciousOperatorExtension.builder()
             .withReconciler(new KafkaServiceReconciler(Clock.systemUTC(), sharedInformerManager))
-            .withKubernetesClient(rbacHandler.operatorClient())
-            .waitForNamespaceDeletion(false)
-            .withConfigurationService(x -> x.withCloseClientOnStop(false))
+            .replaceClusterRoleGlobs("*.ClusterRole.kroxylicious-operator-watched.yaml")
             .build();
 
-    private final LocallyRunningOperatorRbacHandler.TestActor testActor = rbacHandler.testActor(extension);
+    private ClusterUser clusterUser;
 
-    @AfterEach
-    void stopOperator() {
-        extension.getOperator().stop();
-        LOGGER.atInfo().log("Test finished");
+    @BeforeEach
+    void setUp() {
+        clusterUser = operator.clusterUser();
     }
 
     @Test
     void shouldImmediatelyResolveWhenNoReferents() {
         // Given
-        KafkaService resource = kafkaService(SERVICE_A, null, null, null);
+        var suffix = uniqueSuffix();
+        KafkaService resource = kafkaService(SERVICE_A + suffix, null, null, null);
 
         // When
-        testActor.create(resource);
+        clusterUser.create(resource);
 
         // Then
         assertResolvedRefsTrue(resource, FOO_BOOTSTRAP_9090, false);
@@ -92,15 +84,15 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldResolveUpdateToKafkaService() {
         // Given
-        var kafkaService = testActor.create(
-                new KafkaServiceBuilder().withNewMetadata().withName(SERVICE_A).endMetadata().withNewSpec().withBootstrapServers(FOO_BOOTSTRAP_9090).endSpec().build());
-
+        var suffix = uniqueSuffix();
+        var kafkaService = clusterUser.create(
+                new KafkaServiceBuilder().withNewMetadata().withName(SERVICE_A + suffix).endMetadata().withNewSpec().withBootstrapServers(FOO_BOOTSTRAP_9090)
+                        .endSpec().build());
         assertResolvedRefsTrue(kafkaService, FOO_BOOTSTRAP_9090, false);
 
         // When
-        testActor.resources(KafkaService.class)
-                .withName(SERVICE_A)
-                .edit(current -> new KafkaServiceBuilder(current).withNewSpec().withBootstrapServers(BAR_BOOTSTRAP_9090).endSpec().build());
+        clusterUser.resources(KafkaService.class).withName(SERVICE_A + suffix)
+                .edit(current -> new KafkaServiceBuilder(current).editSpec().withBootstrapServers(BAR_BOOTSTRAP_9090).endSpec().build());
 
         // Then
         assertResolvedRefsTrue(kafkaService, BAR_BOOTSTRAP_9090, false);
@@ -109,16 +101,17 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldEventuallyResolveOnceCertSecretCreated() {
         // Given
-        KafkaService resource = kafkaService(SERVICE_A, SECRET_X, null, null);
+        var suffix = uniqueSuffix();
+        KafkaService resource = kafkaService(SERVICE_A + suffix, SECRET_X + suffix, null, null);
 
         // When
-        final KafkaService kafkaService = testActor.create(resource);
+        final KafkaService kafkaService = clusterUser.create(resource);
 
         // Then
         assertResolvedRefsFalse(kafkaService, Condition.REASON_REFS_NOT_FOUND, "spec.tls.certificateRef: referenced secret not found");
 
         // And When
-        testActor.create(tlsCertificateSecret(SECRET_X));
+        clusterUser.create(tlsCertificateSecret(SECRET_X + suffix));
 
         // Then
         assertResolvedRefsTrue(kafkaService, FOO_BOOTSTRAP_9090, true);
@@ -128,12 +121,13 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldUpdateStatusOnceTlsCertificateSecretDeleted() {
         // Given
-        var tlsCertSecret = testActor.create(tlsCertificateSecret(SECRET_X));
-        KafkaService resource = testActor.create(kafkaService(SERVICE_A, SECRET_X, null, null));
+        var suffix = uniqueSuffix();
+        var tlsCertSecret = clusterUser.create(tlsCertificateSecret(SECRET_X + suffix));
+        KafkaService resource = clusterUser.create(kafkaService(SERVICE_A + suffix, SECRET_X + suffix, null, null));
         assertResolvedRefsTrue(resource, FOO_BOOTSTRAP_9090, true);
 
         // When
-        testActor.delete(tlsCertSecret);
+        clusterUser.delete(tlsCertSecret);
 
         // Then
         assertResolvedRefsFalse(resource, Condition.REASON_REFS_NOT_FOUND, "spec.tls.certificateRef: referenced secret not found");
@@ -142,16 +136,17 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldEventuallyResolveOnceTrustAnchorConfigMapCreated() {
         // Given
-        KafkaService resource = kafkaService(SERVICE_A, null, CONFIG_MAP_T, null);
+        var suffix = uniqueSuffix();
+        KafkaService resource = kafkaService(SERVICE_A + suffix, null, CONFIG_MAP_T + suffix, null);
 
         // When
-        final KafkaService kafkaService = testActor.create(resource);
+        final KafkaService kafkaService = clusterUser.create(resource);
 
         // Then
         assertResolvedRefsFalse(kafkaService, Condition.REASON_REFS_NOT_FOUND, "spec.tls.trustAnchorRef: referenced configmap not found");
 
         // And When
-        testActor.create(trustAnchorConfigMap(CONFIG_MAP_T));
+        clusterUser.create(trustAnchorConfigMap(CONFIG_MAP_T + suffix));
 
         // Then
         assertResolvedRefsTrue(kafkaService, FOO_BOOTSTRAP_9090, true);
@@ -161,16 +156,17 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldEventuallyResolveOnceTrustAnchorSecretCreated() {
         // Given
-        KafkaService resource = kafkaService(SERVICE_A, null, SECRET_T, "Secret");
+        var suffix = uniqueSuffix();
+        KafkaService resource = kafkaService(SERVICE_A + suffix, null, SECRET_T + suffix, "Secret");
 
         // When
-        final KafkaService kafkaService = testActor.create(resource);
+        final KafkaService kafkaService = clusterUser.create(resource);
 
         // Then
         assertResolvedRefsFalse(kafkaService, Condition.REASON_REFS_NOT_FOUND, "spec.tls.trustAnchorRef: referenced secret not found");
 
         // And When
-        testActor.create(trustAnchorSecret(SECRET_T));
+        clusterUser.create(trustAnchorSecret(SECRET_T + suffix));
 
         // Then
         assertResolvedRefsTrue(kafkaService, FOO_BOOTSTRAP_9090, true);
@@ -180,13 +176,14 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldUpdateReferentAnnotationWhenTrustAnchorConfigMapModified() {
         // Given
-        testActor.create(trustAnchorConfigMap(CONFIG_MAP_T));
-        KafkaService resource = kafkaService(SERVICE_A, null, CONFIG_MAP_T, null);
-        final KafkaService kafkaService = testActor.create(resource);
+        var suffix = uniqueSuffix();
+        clusterUser.create(trustAnchorConfigMap(CONFIG_MAP_T + suffix));
+        KafkaService resource = kafkaService(SERVICE_A + suffix, null, CONFIG_MAP_T + suffix, null);
+        final KafkaService kafkaService = clusterUser.create(resource);
         String checksum = awaitReferentsChecksumSpecified(resource);
 
         // When
-        testActor.replace(trustAnchorConfigMap(CONFIG_MAP_T).edit().addToData("arbitrary", "arbitrary").build());
+        clusterUser.replace(trustAnchorConfigMap(CONFIG_MAP_T + suffix).edit().addToData("arbitrary", "arbitrary").build());
 
         // Then
         assertReferentsChecksumNotEqual(kafkaService, checksum);
@@ -195,12 +192,13 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldUpdateReferentAnnotationWhenCertificateSecretModified() {
         // Given
-        testActor.create(tlsCertificateSecret(SECRET_X));
-        KafkaService resource = testActor.create(kafkaService(SERVICE_A, SECRET_X, null, null));
+        var suffix = uniqueSuffix();
+        clusterUser.create(tlsCertificateSecret(SECRET_X + suffix));
+        KafkaService resource = clusterUser.create(kafkaService(SERVICE_A + suffix, SECRET_X + suffix, null, null));
         String checksum = awaitReferentsChecksumSpecified(resource);
 
         // When
-        testActor.replace(tlsCertificateSecret(SECRET_X).edit().addToData("arbitrary", "whatever").build());
+        clusterUser.replace(tlsCertificateSecret(SECRET_X + suffix).edit().addToData("arbitrary", "whatever").build());
 
         // Then
         assertReferentsChecksumNotEqual(resource, checksum);
@@ -209,12 +207,13 @@ class KafkaServiceBootstrapReconcilerIT {
     @Test
     void shouldUpdateStatusOnceTrustAnchorConfigMapDeleted() {
         // Given
-        var trustedCaCerts = testActor.create(trustAnchorConfigMap(CONFIG_MAP_T));
-        KafkaService resource = testActor.create(kafkaService(SERVICE_A, null, CONFIG_MAP_T, null));
+        var suffix = uniqueSuffix();
+        var trustedCaCerts = clusterUser.create(trustAnchorConfigMap(CONFIG_MAP_T + suffix));
+        KafkaService resource = clusterUser.create(kafkaService(SERVICE_A + suffix, null, CONFIG_MAP_T + suffix, null));
         assertResolvedRefsTrue(resource, FOO_BOOTSTRAP_9090, true);
 
         // When
-        testActor.delete(trustedCaCerts);
+        clusterUser.delete(trustedCaCerts);
 
         // Then
         assertResolvedRefsFalse(resource, Condition.REASON_REFS_NOT_FOUND, "spec.tls.trustAnchorRef: referenced configmap not found");
@@ -297,16 +296,17 @@ class KafkaServiceBootstrapReconcilerIT {
 
     private void assertResolvedRefsTrue(KafkaService cr, String expectedBootstrap, boolean hasReferents) {
         AWAIT.untilAsserted(() -> {
-            final KafkaService kafkaService = testActor.get(KafkaService.class, ResourcesUtil.name(cr));
+            final KafkaService kafkaService = clusterUser.get(KafkaService.class, ResourcesUtil.name(cr));
             Assertions.assertThat(kafkaService).isNotNull();
-            var status = kafkaService.getStatus();
-            Assertions.assertThat(status).isNotNull();
-            Assertions.assertThat(status.getBootstrapServers()).isEqualTo(expectedBootstrap);
-            assertThat(status)
+            assertThat(kafkaService.getStatus())
                     .isNotNull()
-                    .conditionList()
-                    .singleElement()
-                    .isResolvedRefsTrue();
+                    .satisfies(status -> {
+                        Assertions.assertThat(status.getBootstrapServers()).isEqualTo(expectedBootstrap);
+                        assertThat(status)
+                                .conditionList()
+                                .singleElement()
+                                .isResolvedRefsTrue();
+                    });
             String checksum = getReferentChecksum(kafkaService);
             if (hasReferents) {
                 Assertions.assertThat(checksum).isNotEqualTo(NO_CHECKSUM_SPECIFIED);
@@ -319,14 +319,14 @@ class KafkaServiceBootstrapReconcilerIT {
 
     private String awaitReferentsChecksumSpecified(KafkaService cr) {
         return AWAIT.until(() -> {
-            final KafkaService kafkaService = testActor.get(KafkaService.class, ResourcesUtil.name(cr));
+            final KafkaService kafkaService = clusterUser.get(KafkaService.class, ResourcesUtil.name(cr));
             return getReferentChecksum(kafkaService);
         }, s -> !s.equals(NO_CHECKSUM_SPECIFIED));
     }
 
     private void assertReferentsChecksumNotEqual(KafkaService cr, String checksum) {
         AWAIT.untilAsserted(() -> {
-            final KafkaService kafkaService = testActor.get(KafkaService.class, ResourcesUtil.name(cr));
+            final KafkaService kafkaService = clusterUser.get(KafkaService.class, ResourcesUtil.name(cr));
             String actualChecksum = getReferentChecksum(kafkaService);
             Assertions.assertThat(actualChecksum).isNotEqualTo(checksum);
         });
@@ -341,7 +341,7 @@ class KafkaServiceBootstrapReconcilerIT {
                                          String reason,
                                          String message) {
         AWAIT.alias("KafkaServiceStatusResolvedRefs").untilAsserted(() -> {
-            var kafkaService = testActor.resources(KafkaService.class)
+            var kafkaService = clusterUser.resources(KafkaService.class)
                     .withName(ResourcesUtil.name(cr)).get();
             Assertions.assertThat(kafkaService.getStatus()).isNotNull();
             OperatorAssertions

@@ -12,13 +12,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.kafka.common.Uuid;
-import org.apache.kafka.common.message.ProduceRequestData;
-import org.apache.kafka.common.message.RequestHeaderData;
-import org.apache.kafka.common.message.ResponseHeaderData;
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
-import org.apache.kafka.common.utils.ByteBufferOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -31,6 +24,13 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 
+import io.kroxylicious.kafka.common.Uuid;
+import io.kroxylicious.kafka.common.message.ProduceRequestData;
+import io.kroxylicious.kafka.common.message.RequestHeaderData;
+import io.kroxylicious.kafka.common.message.ResponseHeaderData;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.utils.ByteBufferOutputStream;
 import io.kroxylicious.proxy.authentication.ClientSaslContext;
 import io.kroxylicious.proxy.authentication.Subject;
 import io.kroxylicious.proxy.filter.Filter;
@@ -44,14 +44,17 @@ import io.kroxylicious.proxy.filter.metadata.TopicNameMapping;
 import io.kroxylicious.proxy.frame.DecodedFrame;
 import io.kroxylicious.proxy.frame.DecodedRequestFrame;
 import io.kroxylicious.proxy.frame.DecodedResponseFrame;
+import io.kroxylicious.proxy.frame.Frame;
 import io.kroxylicious.proxy.frame.OpaqueFrame;
 import io.kroxylicious.proxy.frame.OpaqueRequestFrame;
 import io.kroxylicious.proxy.frame.OpaqueResponseFrame;
+import io.kroxylicious.proxy.frame.PathElement;
 import io.kroxylicious.proxy.internal.filter.FilterAndInvoker;
 import io.kroxylicious.proxy.internal.filter.RequestFilterResultBuilderImpl;
 import io.kroxylicious.proxy.internal.filter.ResponseFilterResultBuilderImpl;
 import io.kroxylicious.proxy.internal.util.Assertions;
 import io.kroxylicious.proxy.internal.util.ByteBufOutputStream;
+import io.kroxylicious.proxy.internal.util.Metrics;
 import io.kroxylicious.proxy.tls.ClientTlsContext;
 
 import edu.umd.cs.findbugs.annotations.NonNull;
@@ -74,6 +77,7 @@ public class FilterHandler extends ChannelDuplexHandler {
     private final Channel inboundChannel;
     private final FilterAndInvoker filterAndInvoker;
     private final ClientConnectionStateMachine clientConnectionStateMachine;
+    private final int ordinal;
 
     /** Chains response processing to preserve ordering when filters defer work asynchronously. */
     private CompletableFuture<Void> writeFuture = CompletableFuture.completedFuture(null);
@@ -89,16 +93,28 @@ public class FilterHandler extends ChannelDuplexHandler {
     private @Nullable ChannelHandlerContext ctx;
     private @Nullable PromiseFactory promiseFactory;
 
+    /**
+     * Creates a handler applying the given filter.
+     * @param filterAndInvoker the filter (and its invoker) applied by this handler
+     * @param timeoutMs timeout, in milliseconds, applied to out-of-band requests sent by the filter
+     * @param sniHostname the SNI hostname presented by the client, or {@code null} if none
+     * @param inboundChannel the downstream (client) channel
+     * @param clientConnectionStateMachine the state machine for the client connection
+     * @param ordinal this filter's position within its enclosing filter list, disambiguating
+     *        two filters that happen to share a configured name
+     */
     public FilterHandler(FilterAndInvoker filterAndInvoker,
                          long timeoutMs,
                          @Nullable String sniHostname,
                          Channel inboundChannel,
-                         ClientConnectionStateMachine clientConnectionStateMachine) {
+                         ClientConnectionStateMachine clientConnectionStateMachine,
+                         int ordinal) {
         this.filterAndInvoker = Objects.requireNonNull(filterAndInvoker);
         this.timeoutMs = Assertions.requireStrictlyPositive(timeoutMs, "timeout");
         this.sniHostname = sniHostname;
         this.inboundChannel = inboundChannel;
         this.clientConnectionStateMachine = clientConnectionStateMachine;
+        this.ordinal = ordinal;
     }
 
     @Override
@@ -109,7 +125,7 @@ public class FilterHandler extends ChannelDuplexHandler {
     }
 
     String filterDescriptor() {
-        return filterAndInvoker.filterName();
+        return filterAndInvoker.filterName() + "[" + ordinal + "]";
     }
 
     @Override
@@ -131,28 +147,61 @@ public class FilterHandler extends ChannelDuplexHandler {
      */
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-        if (msg instanceof InternalResponseFrame<?> decodedFrame) {
-            handleInternalResponseWrite(promise, decodedFrame);
-        }
-        else if (msg instanceof DecodedResponseFrame<?> decodedFrame) {
-            handleDecodedResponseWrite(decodedFrame, promise);
-        }
-        else if (msg instanceof OpaqueResponseFrame orf) {
-            handleOpaqueResponseWrite(ctx, msg, promise, orf);
-        }
-        else {
-            throw new IllegalStateException("Filter '" + filterAndInvoker.filterName() + "': Unexpected message writing to downstream: " + msgDescriptor(msg));
+        switch (msg) {
+            case InternalResponseFrame<?> decodedFrame -> handleInternalResponseWrite(promise, decodedFrame);
+            case DecodedResponseFrame<?> decodedFrame -> handleDecodedResponseWrite(decodedFrame, promise);
+            case OpaqueResponseFrame orf -> handleOpaqueResponseWrite(ctx, msg, promise, orf);
+            case null, default -> throw new IllegalStateException(
+                    "Filter '" + filterAndInvoker.filterName() + "': Unexpected message writing to downstream: " + msgDescriptor(msg));
         }
     }
 
+    // FutureReturnValueIgnored: the returned stage's failure path is handled by the filter chain
+    // built in configureResponseFilterChain, which terminates in an exceptionally() that closes
+    // the connection.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private void handleInternalResponseWrite(ChannelPromise promise, InternalResponseFrame<?> decodedFrame) {
         // jump the queue, let responses to asynchronous requests flow back to their sender
-        if (decodedFrame.isRecipient(filterAndInvoker.filter())) {
+        if (isRecipient(decodedFrame)) {
             completeInternalResponse(decodedFrame);
         }
         else {
             handleDecodedResponse(decodedFrame, promise);
         }
+    }
+
+    /**
+     * Determines whether {@code frame} is an internal (out-of-band) response addressed to this
+     * handler's own filter. Matches on name, ordinal, and anchoring route position, excluding
+     * the promise carried on the candidate originator, since a fresh promise is created for
+     * every {@code sendRequest()} call.
+     * <p>
+     * A route-scoped handler requires that its own route lies on the candidate originator's
+     * anchoring position's ancestor chain (an exact match, or an ancestor of it) - to disambiguate
+     * same-named filters on different routes, while tolerating further routing that may have
+     * deepened the originator's {@code position()} beyond this filter's own route after the
+     * request was issued (e.g. the request's route itself targeting a nested router, whose own
+     * static or dynamic dispatch grafts a deeper route onto the same originator - see
+     * {@code RoutingHandler.dispatchStaticRoute}). A VC-level (non-route-scoped) handler's
+     * {@link #ownRoutePath()} is {@link PathElement.ClientOrigin#INSTANCE}, which is trivially an
+     * ancestor of every route position - it has exactly one instance for the whole connection, so
+     * route position carries no identity for it at all - it matches on name and ordinal alone.
+     */
+    boolean isRecipient(Frame frame) {
+        return frame.routing() instanceof PathElement.FilterOriginator f
+                && f.name().equals(filterAndInvoker.filterName())
+                && f.ordinal() == ordinal
+                && ownRoutePath().isAncestorOfOrSameAs(f.position());
+    }
+
+    /**
+     * This handler's own route position, or {@link PathElement.ClientOrigin#INSTANCE} if it is not
+     * route-scoped (in which case it is trivially an ancestor of every route position, per
+     * {@link PathElement.RoutePosition#isAncestorOfOrSameAs}). Subclasses (see {@code RouteFilterHandler})
+     * override this to identify out-of-band requests/responses as belonging to a specific route.
+     */
+    PathElement.RoutePosition ownRoutePath() {
+        return PathElement.ClientOrigin.INSTANCE;
     }
 
     @SuppressWarnings("DataFlowIssue")
@@ -172,6 +221,9 @@ public class FilterHandler extends ChannelDuplexHandler {
         }
     }
 
+    // FutureReturnValueIgnored: `promise` is supplied by the caller and is notified with
+    // the outcome of the write, so the returned future carries no additional information.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private void handleOpaqueResponseWrite(ChannelHandlerContext ctx, Object msg, ChannelPromise promise, OpaqueResponseFrame orf) {
         writeFuture = writeFuture.whenComplete((a, b) -> {
             if (ctx.channel().isOpen()) {
@@ -200,22 +252,18 @@ public class FilterHandler extends ChannelDuplexHandler {
     }
 
     /**
+     * Produces a short descriptor for the given message, suitable for logging.
+     *
      * @param obj A message
-     * @return A descriptor for the message (for logging purposes). Does not include the message contents.
+     * @return A descriptor for the message. Does not include the message contents.
      */
     static String msgDescriptor(@Nullable Object obj) {
-        if (obj == null) {
-            return "«null»";
-        }
-        else if (obj instanceof DecodedFrame<?, ?> df) {
-            return df.getClass().getSimpleName() + "(" + df.apiKey() + "@" + df.apiVersion() + " corrId=" + df.correlationId() + ")";
-        }
-        else if (obj instanceof OpaqueFrame of) {
-            return of.toString();
-        }
-        else {
-            return obj.getClass().getName();
-        }
+        return switch (obj) {
+            case null -> "«null»";
+            case DecodedFrame<?, ?> df -> df.getClass().getSimpleName() + "(" + df.apiKey() + "@" + df.apiVersion() + " corrId=" + df.correlationId() + ")";
+            case OpaqueFrame of -> of.toString();
+            default -> obj.getClass().getName();
+        };
     }
 
     /**
@@ -225,21 +273,21 @@ public class FilterHandler extends ChannelDuplexHandler {
      * @throws Exception if an error occurs
      */
     @Override
+    // identity check: Netty's shared Unpooled.EMPTY_BUFFER close-on-flush signal; ByteBuf.equals compares content
+    // FutureReturnValueIgnored: the returned stage's failure path is handled by the filter chain
+    // built in configureRequestFilterChain, which terminates in an exceptionally() that closes
+    // the connection.
+    @SuppressWarnings({ "ReferenceEquality", "FutureReturnValueIgnored" })
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if (msg instanceof InternalRequestFrame<?> decodedFrame) {
-            // jump the queue, internal request must flow!
-            handleDecodedRequest(decodedFrame);
-        }
-        else if (msg instanceof DecodedRequestFrame<?> decodedFrame) {
-            handleDecodedRequestRead(decodedFrame);
-        }
-        else if (msg instanceof OpaqueRequestFrame || msg == Unpooled.EMPTY_BUFFER) {
-            handleOpaqueOrPassthroughRead(msg);
-        }
-        else {
+        switch (msg) {
+            case InternalRequestFrame<?> decodedFrame -> handleDecodedRequest(decodedFrame); // jump the queue, internal request must flow!
+            case DecodedRequestFrame<?> decodedFrame -> handleDecodedRequestRead(decodedFrame);
+            case OpaqueRequestFrame ignored -> handleOpaqueOrPassthroughRead(msg);
+            case ByteBuf ignored when msg == Unpooled.EMPTY_BUFFER -> handleOpaqueOrPassthroughRead(msg);
             // Unpooled.EMPTY_BUFFER is used by KafkaProxyFrontendHandler#closeOnFlush
             // but, otherwise we don't expect any other kind of message
-            throw new IllegalStateException("Filter '" + filterAndInvoker.filterName() + "': Unexpected message writing to upstream: " + msgDescriptor(msg));
+            case null, default -> throw new IllegalStateException(
+                    "Filter '" + filterAndInvoker.filterName() + "': Unexpected message writing to upstream: " + msgDescriptor(msg));
         }
     }
 
@@ -365,10 +413,7 @@ public class FilterHandler extends ChannelDuplexHandler {
         }
 
         if (responseFilterResult.closeConnection()) {
-            if (responseFilterResult.message() != null) {
-                ctx.flush(); // ensure writes are flushed before closing
-            }
-            closeConnection();
+            closeConnection(CloseReason.filterCloseConnection());
         }
         return responseFilterResult;
     }
@@ -395,15 +440,13 @@ public class FilterHandler extends ChannelDuplexHandler {
         }
 
         if (requestFilterResult.closeConnection()) {
-            if (requestFilterResult.message() != null) {
-                ctx.flush();
-            }
-            closeConnection();
+            closeConnection(CloseReason.filterCloseConnection());
         }
         return requestFilterResult;
     }
 
-    private <F extends FilterResult> @Nullable F handleFilteringException(Throwable t, DecodedFrame<?, ?> decodedFrame) {
+    @Nullable
+    private <F extends FilterResult> F handleFilteringException(Throwable t, DecodedFrame<?, ?> decodedFrame) {
         if (LOGGER.isWarnEnabled()) {
             var direction = decodedFrame.header() instanceof RequestHeaderData ? "request" : "response";
             log(WARN)
@@ -421,10 +464,10 @@ public class FilterHandler extends ChannelDuplexHandler {
 
     private <F extends FilterResult> CompletableFuture<F> handleDeferredStage(DecodedFrame<?, ?> decodedFrame, CompletableFuture<F> future) {
         inboundChannel.config().setAutoRead(false);
-        promiseFactory.wrapWithTimeLimit(future,
+        return promiseFactory.wrapWithTimeLimit(future,
                 () -> "Deferred work for filter '%s' did not complete processing within %s ms %s %s".formatted(filterDescriptor(), timeoutMs,
-                        decodedFrame instanceof DecodedRequestFrame ? "request" : "response", decodedFrame.apiKey()));
-        return future.thenApplyAsync(filterResult -> filterResult, ctx.executor());
+                        decodedFrame instanceof DecodedRequestFrame ? "request" : "response", decodedFrame.apiKey()))
+                .thenApplyAsync(filterResult -> filterResult, ctx.executor());
     }
 
     /**
@@ -432,6 +475,10 @@ public class FilterHandler extends ChannelDuplexHandler {
      * Unlike {@link #deferredRequestCompleted}, no immediate flush is needed here
      * because responses always flow through the normal write path with its own flush handling.
      */
+    // FutureReturnValueIgnored: these are flush-only callbacks whose throwables are intentionally
+    // ignored; a failed writeFuture has already been reported through that write's own promise
+    // and from there to exceptionCaught, so the throwable here would be duplicate information.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private void deferredResponseCompleted(ResponseFilterResult ignored, Throwable throwable) {
         inboundChannel.config().setAutoRead(true);
         // Ensure proper ordering of flushes to prevent race conditions
@@ -463,6 +510,10 @@ public class FilterHandler extends ChannelDuplexHandler {
      * If no writes occurred, flush is a no-op (harmless). This belt-and-suspenders approach
      * prevents race conditions between async writes and flush timing.
      */
+    // FutureReturnValueIgnored: flush-only callback; a failed writeFuture has already been
+    // reported through that write's own promise and from there to exceptionCaught, so the
+    // throwable here would be duplicate information.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private void deferredRequestCompleted(RequestFilterResult ignored, Throwable throwable) {
         inboundChannel.config().setAutoRead(true);
         // Ensure proper ordering of flushes to prevent race conditions
@@ -475,6 +526,8 @@ public class FilterHandler extends ChannelDuplexHandler {
         });
     }
 
+    // identity check: invariant that the filter forwarded the exact frame body/header instances (in-place mutation contract), not copies
+    @SuppressWarnings("ReferenceEquality")
     private void forwardRequest(DecodedRequestFrame<?> decodedFrame,
                                 RequestFilterResult requestFilterResult) {
         var header = requestFilterResult.header() == null ? decodedFrame.header() : requestFilterResult.header();
@@ -538,6 +591,10 @@ public class FilterHandler extends ChannelDuplexHandler {
         }
     }
 
+    // identity check: invariant that the filter forwarded the exact frame body/header instances (in-place mutation contract), not copies
+    // FutureReturnValueIgnored: `promise` is supplied by the caller and is notified with
+    // the outcome of the write, so the returned future carries no additional information.
+    @SuppressWarnings({ "ReferenceEquality", "FutureReturnValueIgnored" })
     private void handleUpstreamResponse(DecodedFrame<?, ?> decodedFrame, ResponseHeaderData header, ApiMessage message, @NonNull ChannelPromise promise) {
         if (decodedFrame.body() != message) {
             throw new AssertionError();
@@ -551,6 +608,11 @@ public class FilterHandler extends ChannelDuplexHandler {
         ctx.write(decodedFrame, promise);
     }
 
+    // FutureReturnValueIgnored: ctx.voidPromise() is a VoidChannelPromise; by Netty's design,
+    // failures on a void-promise write are delivered to the pipeline's exceptionCaught rather
+    // than to a listener. Void promises are used deliberately on this hot data path to avoid
+    // per-write promise allocation. Covered by shortCircuitResponseWriteFailureReachesExceptionCaught.
+    @SuppressWarnings("FutureReturnValueIgnored")
     private void handleShortCircuitResponse(DecodedRequestFrame<?> decodedRequestFrame, ResponseHeaderData header, ApiMessage message) {
         if (message.apiKey() != decodedRequestFrame.apiKeyId()) {
             throw new AssertionError(
@@ -564,6 +626,11 @@ public class FilterHandler extends ChannelDuplexHandler {
                 .log("Filter sending short-circuit response");
         ctx.write(responseFrame, ctx.voidPromise());
         ctx.flush();
+        if (!(decodedRequestFrame instanceof InternalRequestFrame<?>)) {
+            // OOB requests are internally-generated (via FilterContext.sendRequest) and were never
+            // counted by ClientConnectionStateMachine.onClientRequest, so they must not be decremented here.
+            clientConnectionStateMachine.onShortCircuitResponseComplete();
+        }
     }
 
     private void validateResponseMessage(ApiMessage message) {
@@ -584,6 +651,10 @@ public class FilterHandler extends ChannelDuplexHandler {
                     .addKeyValue("apiKey", decodedFrame.apiKey())
                     .log("Filter attempted to short-circuit respond to message with no response in Kafka Protocol, dropping response");
         }
+    }
+
+    private void closeConnection(CloseReason reason) {
+        clientConnectionStateMachine.requestClose(reason);
     }
 
     private void closeConnection() {
@@ -670,6 +741,8 @@ public class FilterHandler extends ChannelDuplexHandler {
                     .addKeyValue("subject", subject)
                     .log("Filter announces client has passed SASL authentication");
 
+            Metrics.clientAuthCounter(getVirtualClusterName(), mechanism, "success").increment();
+
             clientConnectionStateMachine.onSessionSaslAuthenticated();
 
             // dispatch principal injection
@@ -687,6 +760,11 @@ public class FilterHandler extends ChannelDuplexHandler {
                     .setCause(LOGGER.isDebugEnabled() ? exception : null)
                     .log("Filter announces client has failed SASL authentication" +
                             (LOGGER.isDebugEnabled() ? "" : ", increase log level to DEBUG for stacktrace"));
+
+            Metrics.clientAuthCounter(getVirtualClusterName(),
+                    mechanism != null ? mechanism : "unknown",
+                    "failure").increment();
+
             clientConnectionStateMachine.clientSaslAuthenticationFailure();
         }
 
@@ -723,7 +801,10 @@ public class FilterHandler extends ChannelDuplexHandler {
 
             var apiKey = ApiKeys.forId(request.apiKey());
             header.setRequestApiKey(apiKey.id);
-            header.setCorrelationId(-1);
+            // Distinct per request so plugins that key their own bookkeeping off correlation id
+            // don't suffer collisions. The proxy's own delivery/observation logic never reads this
+            // value, it's carried on the frame's routing value instead.
+            header.setCorrelationId(clientConnectionStateMachine.internalCorrelationIdAllocator().allocateId());
 
             if (!apiKey.isVersionSupported(header.requestApiVersion())) {
                 throw new IllegalArgumentException(
@@ -735,8 +816,8 @@ public class FilterHandler extends ChannelDuplexHandler {
             CompletableFuture<M> filterPromise = promiseFactory.newTimeLimitedPromise(
                     () -> "Asynchronous %s request made by filter '%s' failed to complete within %s ms.".formatted(apiKey, filterDescriptor(), timeoutMs));
             var frame = new InternalRequestFrame<>(
-                    header.requestApiVersion(), header.correlationId(), hasResponse,
-                    filterAndInvoker.filter(), filterPromise, header, request);
+                    header.requestApiVersion(), header.correlationId(), hasResponse, header, request);
+            frame.setRouting(new PathElement.FilterOriginator(filterAndInvoker.filterName(), ordinal, filterPromise, ownRoutePath()));
 
             log(DEBUG)
                     .addKeyValue("message", () -> msgDescriptor(frame))

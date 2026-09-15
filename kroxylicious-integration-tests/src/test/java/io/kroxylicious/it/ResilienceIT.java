@@ -25,10 +25,14 @@ import org.apache.kafka.common.errors.TimeoutException;
 import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.parallel.ResourceLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.kroxylicious.proxy.config.ConfigurationBuilder;
+import io.kroxylicious.proxy.config.VirtualClusterBuilder;
+import io.kroxylicious.proxy.service.HostPort;
+import io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils;
 import io.kroxylicious.testing.kafka.api.KafkaCluster;
 import io.kroxylicious.testing.kafka.api.TerminationStyle;
 import io.kroxylicious.testing.kafka.common.BrokerCluster;
@@ -43,6 +47,7 @@ import static org.apache.kafka.clients.producer.ProducerConfig.RECONNECT_BACKOFF
 import static org.apache.kafka.clients.producer.ProducerConfig.RECONNECT_BACKOFF_MS_CONFIG;
 import static org.apache.kafka.clients.producer.ProducerConfig.RETRY_BACKOFF_MS_CONFIG;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 /**
  * Tests with the aim of demonstrating that system survives a Kroxylicious restart.
@@ -50,30 +55,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ExtendWith(KafkaClusterExtension.class)
 class ResilienceIT extends BaseIT {
     private static final Logger LOGGER = LoggerFactory.getLogger(ResilienceIT.class);
+    private static final String FIXED_BOOTSTRAP = "localhost:9192";
 
     static @BrokerCluster(numBrokers = 3) KafkaCluster cluster;
 
     @Test
+    @ResourceLock(FIXED_BOOTSTRAP)
     void kafkaProducerShouldTolerateKroxyliciousRestarting(Topic randomTopic) throws Exception {
-        testProducerCanSurviveARestart(proxy(cluster), randomTopic);
+        testProducerCanSurviveARestart(fixedPortProxy(cluster.getBootstrapServers()), randomTopic);
     }
 
     @Test
+    @ResourceLock(FIXED_BOOTSTRAP)
     void kafkaProducerShouldTolerateKroxyliciousRestartingWithFirstBootstrapUnavailable(Topic randomTopic) throws Exception {
         try (var immediateCloseServer = new ImmediateCloseSocketServer()) {
-            testProducerCanSurviveARestart(proxy(immediateCloseServer.getHostPort() + "," + cluster.getBootstrapServers()), randomTopic);
+            testProducerCanSurviveARestart(fixedPortProxy(immediateCloseServer.getHostPort() + "," + cluster.getBootstrapServers()), randomTopic);
         }
     }
 
     @Test
+    @ResourceLock(FIXED_BOOTSTRAP)
     void kafkaConsumerShouldTolerateKroxyliciousRestarting(Topic randomTopic) throws Exception {
-        testConsumerCanSurviveKroxyliciousRestart(proxy(cluster), randomTopic);
+        testConsumerCanSurviveKroxyliciousRestart(fixedPortProxy(cluster.getBootstrapServers()), randomTopic);
     }
 
     @Test
+    @ResourceLock(FIXED_BOOTSTRAP)
     void kafkaConsumerShouldTolerateKroxyliciousRestartingWithFirstBootstrapUnavailable(Topic randomTopic) throws Exception {
         try (var immediateCloseServer = new ImmediateCloseSocketServer()) {
-            testConsumerCanSurviveKroxyliciousRestart(proxy(immediateCloseServer.getHostPort() + "," + cluster.getBootstrapServers()), randomTopic);
+            testConsumerCanSurviveKroxyliciousRestart(fixedPortProxy(immediateCloseServer.getHostPort() + "," + cluster.getBootstrapServers()), randomTopic);
         }
     }
 
@@ -155,11 +165,12 @@ class ResilienceIT extends BaseIT {
             var afterRestartTopic = admin.createTopics(List.of(new NewTopic("afterRestart", Optional.empty(), Optional.empty()))).all();
             assertThat(afterRestartTopic).succeedsWithin(Duration.ofSeconds(10));
 
-            var topics = admin.listTopics().names();
-            assertThat(topics)
+            // a successful create is not immediately reflected in the metadata served by
+            // listTopics after the cluster restart, so retry until it propagates
+            await().atMost(Duration.ofSeconds(30)).untilAsserted(() -> assertThat(admin.listTopics().names())
                     .succeedsWithin(Duration.ofSeconds(10))
                     .asInstanceOf(InstanceOfAssertFactories.set(String.class))
-                    .containsAll(List.of("beforeStop", "afterRestart"));
+                    .containsAll(List.of("beforeStop", "afterRestart")));
         }
     }
 
@@ -222,5 +233,17 @@ class ResilienceIT extends BaseIT {
             assertThat(records).hasSize(2);
             assertThat(records.iterator()).toIterable().map(ConsumerRecord::value).containsExactly("Hello, world!", "Hello, again!");
         }
+    }
+
+    private static ConfigurationBuilder fixedPortProxy(String clusterBootstrapServers) {
+        return KroxyliciousConfigUtils.baseConfigurationBuilder()
+                .addToVirtualClusters(new VirtualClusterBuilder()
+                        .withName(KroxyliciousConfigUtils.DEFAULT_VIRTUAL_CLUSTER)
+                        .withNewTargetCluster()
+                        .withBootstrapServers(clusterBootstrapServers)
+                        .endTargetCluster()
+                        .addToGateways(KroxyliciousConfigUtils.defaultPortIdentifiesNodeGatewayBuilder(
+                                HostPort.parse(FIXED_BOOTSTRAP)).build())
+                        .build());
     }
 }

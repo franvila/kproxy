@@ -38,7 +38,7 @@ public class CorrelationManager {
      * @param apiVersion The API version.
      * @param correlationId The request's correlation id.
      * @param responseFuture The future to complete with the response
-     * @param responseApiVersion
+     * @param responseApiVersion The API version with which the response will be decoded.
      */
     public void putBrokerRequest(short apiKey,
                                  short apiVersion,
@@ -60,6 +60,10 @@ public class CorrelationManager {
         return brokerRequests.remove(correlationId);
     }
 
+    /**
+     * Fails all pending correlations, completing their response futures exceptionally.
+     * Invoked when the channel closes before the outstanding responses have been received.
+     */
     public void onChannelClose() {
         List<Integer> pending = brokerRequests.keySet().stream().toList();
         for (Integer correlation : pending) {
@@ -73,6 +77,11 @@ public class CorrelationManager {
     /**
      * A record for which responses should be decoded, together with their
      * API key and version.
+     *
+     * @param apiKey the API key of the request
+     * @param apiVersion the API version of the request
+     * @param responseFuture the future to complete with the response
+     * @param responseApiVersion the API version with which the response will be decoded
      */
     public record Correlation(short apiKey,
                               short apiVersion,
@@ -93,10 +102,9 @@ public class CorrelationManager {
             if (this == o) {
                 return true;
             }
-            if (o == null || getClass() != o.getClass()) {
+            if (!(o instanceof Correlation that)) {
                 return false;
             }
-            Correlation that = (Correlation) o;
             return apiKey == that.apiKey && apiVersion == that.apiVersion && responseApiVersion == that.responseApiVersion;
         }
 

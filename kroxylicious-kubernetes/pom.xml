@@ -12,7 +12,7 @@
     <parent>
         <groupId>io.kroxylicious</groupId>
         <artifactId>kroxylicious-parent</artifactId>
-        <version>0.22.0-SNAPSHOT</version>
+        <version>0.25.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>kroxylicious-kubernetes-parent</artifactId>
@@ -20,6 +20,10 @@
     <name>Kubernetes components</name>
     <description>Kubernetes components</description>
     <packaging>pom</packaging>
+
+    <properties>
+        <josdk.version>5.6.0</josdk.version>
+    </properties>
 
     <modules>
         <module>kroxylicious-kubernetes-api</module>
@@ -30,6 +34,18 @@
         <module>kroxylicious-admission</module>
         <module>kroxylicious-admission-dist</module>
     </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.javaoperatorsdk</groupId>
+                <artifactId>operator-framework-bom</artifactId>
+                <version>${josdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <plugins>
@@ -50,6 +66,7 @@
                                     </excludes>
                                     <includes combine.children="append">
                                         <include>io.kroxylicious:kroxylicious-api</include>
+                                        <include>io.kroxylicious:kroxylicious-identity-api</include>
                                         <include>io.kroxylicious:kroxylicious-runtime</include>
                                         <include>io.kroxylicious:kroxylicious-annotations</include>
                                         <include>io.kroxylicious:kroxylicious-operator</include>

@@ -15,11 +15,11 @@
     <parent>
         <groupId>io.kroxylicious</groupId>
         <artifactId>kroxylicious-kubernetes-parent</artifactId>
-        <version>0.22.0-SNAPSHOT</version>
+        <version>0.25.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>kroxylicious-kubernetes-api</artifactId>
-    <version>0.22.0-SNAPSHOT</version>
+    <version>0.25.0-SNAPSHOT</version>
     <name>Kubernetes Operator CRD API</name>
     <description>The Kubernetes Custom Resource Definitions for the Kroxylicious Operator and their Java equivalents.
 
@@ -27,23 +27,15 @@
     </description>
 
     <properties>
-        <josdk.version>5.3.4</josdk.version>
         <log4j.version>2.20.0</log4j.version>
         <fabric8-client.version>7.4.0</fabric8-client.version>
-        <lombok.version>1.18.44</lombok.version>
+        <lombok.version>1.18.48</lombok.version>
         <errorprone.skip>true</errorprone.skip>
     </properties>
 
     <dependencyManagement>
         <dependencies>
-            <!-- note, we're inheriting the jackson & micrometer BOMs from our parent pom -->
-            <dependency>
-                <groupId>io.javaoperatorsdk</groupId>
-                <artifactId>operator-framework-bom</artifactId>
-                <version>${josdk.version}</version>
-                <type>pom</type>
-                <scope>import</scope>
-            </dependency>
+            <!-- note, we're inheriting the jackson, micrometer & JOSDK BOMs from our parent pom -->
             <dependency>
                 <groupId>io.fabric8</groupId>
                 <artifactId>kubernetes-client-bom</artifactId>
@@ -294,9 +286,20 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <configuration>
-                    <!-- disable for packages containing the sundrio generated classes -->
-                    <excludePackageNames>io.kroxylicious.proxy.config:io.kroxylicious.proxy.config.admin
+                    <!-- Exclude the fabric8/sundrio generated CRD classes from the javadoc; only
+                         the CRD YAMLs themselves are public API, not the derived Java classes. -->
+                    <excludePackageNames>io.kroxylicious.kubernetes.api.v1alpha1:io.kroxylicious.kubernetes.api.v1alpha1.*:io.kroxylicious.kubernetes.filter.api.v1alpha1:io.kroxylicious.kubernetes.filter.api.v1alpha1.*
                     </excludePackageNames>
+                    <sourceFileExcludes>
+                        <!-- sundrio generates these into the same package as the hand-written classes -->
+                        <sourceFileExclude>**/*Builder.java</sourceFileExclude>
+                        <sourceFileExclude>**/*Fluent.java</sourceFileExclude>
+                    </sourceFileExcludes>
+                    <!-- The generated builders cannot carry doc comments but are referenced
+                         from the hand-written classes' signatures, so the missing-comment lint
+                         cannot be satisfied. All other doclint groups still produce warnings
+                         that break the build. -->
+                    <doclint>all,-missing</doclint>
                 </configuration>
             </plugin>
         </plugins>

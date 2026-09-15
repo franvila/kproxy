@@ -7,10 +7,15 @@
 package io.kroxylicious.proxy.internal.net;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 
 import io.kroxylicious.proxy.service.HostPort;
 
+/**
+ * Reconciles the network endpoints of a virtual cluster against the broker topology of its
+ * target cluster, binding and unbinding ports as brokers are discovered, added or removed.
+ */
 public interface EndpointReconciler {
 
     /**
@@ -19,8 +24,18 @@ public interface EndpointReconciler {
      * endpoint bindings have been realised, the returned CompletionStage will be completed.
      *
      * @param virtualClusterModel virtual cluster
-     * @param upstreamNodes  current set of node ids
+     * @param upstreamNodes  current set of node ids (note these may be physical node ids, or a virtual node ids if routing enabled),
      * @return CompletionStage that is used to signal completion of the work.
      */
     CompletionStage<Void> reconcile(EndpointGateway virtualClusterModel, Map<Integer, HostPort> upstreamNodes);
+
+    /**
+     * Returns the upstream address for the given upstream node ID (note this may be a physical node id, or a virtual node id if routing enabled),
+     * as last reconciled for the virtual cluster identified by {@code gateway}. Returns empty if the address is not yet known.
+     *
+     * @param gateway the virtual cluster's endpoint gateway
+     * @param upstreamNodeId the upstream node ID
+     * @return the upstream host and port, or empty if not yet known
+     */
+    Optional<HostPort> upstreamAddress(EndpointGateway gateway, int upstreamNodeId);
 }

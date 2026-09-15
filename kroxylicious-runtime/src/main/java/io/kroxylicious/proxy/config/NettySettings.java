@@ -9,12 +9,18 @@ package io.kroxylicious.proxy.config;
 import java.time.Duration;
 import java.util.Optional;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+/**
+ * Tunable settings for a Netty event loop group.
+ *
+ * @param workerThreadCount number of worker threads; defaults to Netty's own default when absent
+ * @param shutdownQuietPeriod quiet period observed during graceful shutdown of the event loop group
+ * @param shutdownTimeout maximum time to wait for the event loop group to shut down
+ * @param authenticatedIdleTimeout idle timeout applied to authenticated connections
+ * @param unauthenticatedIdleTimeout idle timeout applied to connections that have not yet authenticated
+ */
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
 public record NettySettings(Optional<Integer> workerThreadCount,
                             Optional<Duration> shutdownQuietPeriod,
@@ -22,11 +28,15 @@ public record NettySettings(Optional<Integer> workerThreadCount,
                             Optional<Duration> authenticatedIdleTimeout,
                             Optional<Duration> unauthenticatedIdleTimeout) {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(NettySettings.class);
-
     /**
-     * Jackson factory that also accepts the deprecated {@code shutdownQuietPeriodSeconds}
-     * integer field, mapping it to {@code shutdownQuietPeriod} with a warning.
+     * Jackson creator.
+     *
+     * @param workerThreadCount number of worker threads
+     * @param shutdownQuietPeriod quiet period observed during graceful shutdown
+     * @param shutdownTimeout maximum time to wait for shutdown
+     * @param authenticatedIdleTimeout idle timeout for authenticated connections
+     * @param unauthenticatedIdleTimeout idle timeout for unauthenticated connections
+     * @return the settings
      */
     @JsonCreator
     public static NettySettings fromJson(
@@ -34,15 +44,13 @@ public record NettySettings(Optional<Integer> workerThreadCount,
                                          @JsonProperty("shutdownQuietPeriod") Optional<Duration> shutdownQuietPeriod,
                                          @JsonProperty("shutdownTimeout") Optional<Duration> shutdownTimeout,
                                          @JsonProperty("authenticatedIdleTimeout") Optional<Duration> authenticatedIdleTimeout,
-                                         @JsonProperty("unauthenticatedIdleTimeout") Optional<Duration> unauthenticatedIdleTimeout,
-                                         @Deprecated(since = "0.20.0", forRemoval = true) @JsonProperty("shutdownQuietPeriodSeconds") Optional<Integer> shutdownQuietPeriodSeconds) {
-        var resolvedQuietPeriod = shutdownQuietPeriod.or(() -> shutdownQuietPeriodSeconds.map(seconds -> {
-            LOGGER.atWarn().log("ShutdownQuietPeriodSeconds is deprecated, use shutdownQuietPeriod (Go-style duration e.g. \"2s\") instead");
-            return Duration.ofSeconds(seconds);
-        }));
-        return new NettySettings(workerThreadCount, resolvedQuietPeriod, shutdownTimeout, authenticatedIdleTimeout, unauthenticatedIdleTimeout);
+                                         @JsonProperty("unauthenticatedIdleTimeout") Optional<Duration> unauthenticatedIdleTimeout) {
+        return new NettySettings(workerThreadCount, shutdownQuietPeriod, shutdownTimeout, authenticatedIdleTimeout, unauthenticatedIdleTimeout);
     }
 
+    /**
+     * Validates that none of the configured durations are negative.
+     */
     public NettySettings {
         requireNonNegative(shutdownQuietPeriod, "shutdownQuietPeriod");
         requireNonNegative(shutdownTimeout, "shutdownTimeout");

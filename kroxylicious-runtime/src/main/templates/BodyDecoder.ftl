@@ -24,10 +24,10 @@
 package ${outputPackage};
 
 <#list inputSpecs as inputSpec>
-import org.apache.kafka.common.message.${inputSpec.name}Data;
+import io.kroxylicious.kafka.common.message.${inputSpec.name}Data;
 </#list>
-import org.apache.kafka.common.protocol.ApiKeys;
-import org.apache.kafka.common.protocol.ApiMessage;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.kafka.common.protocol.ApiMessage;
 
 import io.kroxylicious.proxy.frame.ByteBufAccessor;
 
@@ -36,6 +36,13 @@ import io.kroxylicious.proxy.frame.ByteBufAccessor;
 * <p>Note: this class is automatically generated from a template</p>
 */
 public class BodyDecoder {
+
+    /**
+    * Not instantiable: all members are static.
+    */
+    private BodyDecoder() {
+        // Prevent construction
+    }
 
     /**
     * Decodes Kafka request Readable into an ApiMessage
@@ -49,7 +56,7 @@ public class BodyDecoder {
         return switch (apiKey) {
 <#list inputSpecs as inputSpec>
     <#if inputSpec.type?lower_case == 'request'>
-            case ${retrieveApiKey(inputSpec)} -> new ${inputSpec.name}Data(accessor, apiVersion);
+            case ${inputSpec.kafkaApiKeyEnumName} -> new ${inputSpec.name}Data(accessor, apiVersion);
     </#if>
 </#list>
             default -> throw new IllegalArgumentException("Unsupported RPC " + apiKey);
@@ -70,7 +77,7 @@ public class BodyDecoder {
         return switch (apiKey) {
 <#list inputSpecs as inputSpec>
     <#if inputSpec.type?lower_case == 'response'>
-            case ${retrieveApiKey(inputSpec)} -> new ${inputSpec.name}Data(accessor, apiVersion);
+            case ${inputSpec.kafkaApiKeyEnumName} -> new ${inputSpec.name}Data(accessor, apiVersion);
     </#if>
 </#list>
 

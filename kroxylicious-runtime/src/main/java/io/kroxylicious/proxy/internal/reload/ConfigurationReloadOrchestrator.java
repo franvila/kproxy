@@ -14,10 +14,12 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.micrometer.core.instrument.Timer;
+
 import io.kroxylicious.proxy.config.Configuration;
-import io.kroxylicious.proxy.config.PluginFactoryRegistry;
 import io.kroxylicious.proxy.internal.VirtualClusterRegistry;
 import io.kroxylicious.proxy.internal.net.EndpointRegistry;
+import io.kroxylicious.proxy.internal.util.Metrics;
 import io.kroxylicious.proxy.reload.ConcurrentReconfigureException;
 import io.kroxylicious.proxy.reload.ReconfigureError;
 import io.kroxylicious.proxy.reload.ReconfigureResult;
@@ -47,14 +49,17 @@ import io.kroxylicious.proxy.tag.VisibleForTesting;
  *   <li><b>Commit</b> — advance {@code currentConfiguration} to the submitted value.</li>
  * </ul>
  *
- * <p>Modify operations are not yet supported and are rejected upfront with
- * {@link UnsupportedOperationException}.
  */
 public class ConfigurationReloadOrchestrator {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ConfigurationReloadOrchestrator.class);
 
     private static final String LOG_KEY_ERROR = "error";
+
+    private static final String OUTCOME_SUCCESS = "success";
+    private static final String OUTCOME_PARTIAL_FAILURE = "partial_failure";
+    private static final String OUTCOME_CATASTROPHIC = "catastrophic";
+    private static final String OUTCOME_FAILURE = "failure";
 
     private final ReentrantLock reconfigureLock = new ReentrantLock();
     private final List<ChangeDetector> detectors;
@@ -68,14 +73,20 @@ public class ConfigurationReloadOrchestrator {
      */
     private Configuration currentConfiguration;
 
+    /**
+     * Creates an orchestrator using the production {@link OperationsPlanner}.
+     *
+     * @param initialConfiguration the configuration the proxy was started with
+     * @param virtualClusterRegistry registry of the proxy's virtual clusters
+     * @param endpointRegistry registry of the proxy's network endpoints
+     * @param detectors the change detectors used to compute per-virtual-cluster changes
+     */
     public ConfigurationReloadOrchestrator(Configuration initialConfiguration,
                                            VirtualClusterRegistry virtualClusterRegistry,
                                            EndpointRegistry endpointRegistry,
-                                           PluginFactoryRegistry pfr,
                                            List<ChangeDetector> detectors) {
         this(initialConfiguration, detectors,
-                new OperationsPlanner(virtualClusterRegistry, endpointRegistry,
-                        config -> config.virtualClusterModel(pfr)));
+                new OperationsPlanner(virtualClusterRegistry, endpointRegistry, virtualClusterRegistry::resolveModel));
     }
 
     /**
@@ -93,28 +104,30 @@ public class ConfigurationReloadOrchestrator {
 
     /**
      * The production-default set of change detectors:
-     * {@link VirtualClusterChangeDetector} and {@link FilterChangeDetector}.
+     * {@link VirtualClusterChangeDetector}, {@link FilterChangeDetector}, and
+     * {@link RoutingGraphChangeDetector}.
+     *
+     * @return the default list of change detectors
      */
     public static List<ChangeDetector> defaultDetectors() {
-        return List.of(new VirtualClusterChangeDetector(), new FilterChangeDetector());
+        return List.of(new VirtualClusterChangeDetector(), new FilterChangeDetector(), new RoutingGraphChangeDetector());
     }
 
     /**
      * Apply {@code newConfig} to the running proxy.
      *
+     * @param newConfig the configuration to apply
      * @return a future that completes:
      *         <ul>
      *           <li>successfully with an empty-errors {@link ReconfigureResult} on a no-op
      *               reconfigure ({@code currentConfiguration} still advances)</li>
      *           <li>successfully with a {@link ReconfigureResult} (possibly with per-cluster
-     *               errors) on any non-modify reconfigure ({@code currentConfiguration}
-     *               advances unconditionally — see {@link #commit} for rationale)</li>
+     *               errors) on any reconfigure ({@code currentConfiguration} advances
+     *               unconditionally — see {@link #commit} for rationale)</li>
      *           <li>exceptionally with {@link StaticConfigurationChangedException} on
      *               static-section diff</li>
      *           <li>exceptionally with {@link ConcurrentReconfigureException} on
      *               concurrent submission</li>
-     *           <li>exceptionally with {@link UnsupportedOperationException} when the
-     *               submission requires modify operations</li>
      *         </ul>
      */
     public CompletableFuture<ReconfigureResult> reconfigure(Configuration newConfig) {
@@ -132,6 +145,7 @@ public class ConfigurationReloadOrchestrator {
                     .setCause(e)
                     .addKeyValue(LOG_KEY_ERROR, e.getMessage())
                     .log("reconfigure failed");
+            Metrics.reconfigureCounter(OUTCOME_CATASTROPHIC).increment();
             return CompletableFuture.failedFuture(e);
         }
         finally {
@@ -148,18 +162,39 @@ public class ConfigurationReloadOrchestrator {
             return CompletableFuture.failedFuture(new StaticConfigurationChangedException(staticDiffs));
         }
 
-        var changes = aggregateChanges(currentConfiguration, newConfig);
-        if (changes.isEmpty()) {
-            return commit(newConfig, List.of());
+        // Time the attempted reconfigure end-to-end. The body is synchronous (each operation
+        // blocks internally), so the sample captures real wall-clock duration; the finally
+        // records it even when planning/applying throws (the catastrophic path).
+        var sample = Timer.start();
+        try {
+            var changes = aggregateChanges(currentConfiguration, newConfig);
+            if (changes.isEmpty()) {
+                Metrics.reconfigureCounter(OUTCOME_SUCCESS).increment();
+                return commit(newConfig, List.of());
+            }
+
+            var errors = planner.plan(changes, newConfig).stream()
+                    .map(this::applyAndCount)
+                    .flatMap(Optional::stream)
+                    .toList();
+
+            Metrics.reconfigureCounter(errors.isEmpty() ? OUTCOME_SUCCESS : OUTCOME_PARTIAL_FAILURE).increment();
+            return commit(newConfig, errors);
         }
-        rejectIfModifyRequested(changes);
+        finally {
+            sample.stop(Metrics.reconfigureDurationTimer());
+        }
+    }
 
-        var errors = planner.plan(changes, newConfig).stream()
-                .map(ClusterOperation::apply)
-                .flatMap(Optional::stream)
-                .toList();
-
-        return commit(newConfig, errors);
+    /**
+     * Applies one operation and records the {@code clusters_affected} counter for it, tagged by
+     * operation kind and per-cluster outcome.
+     */
+    private Optional<ReconfigureError> applyAndCount(ClusterOperation operation) {
+        var error = operation.apply();
+        Metrics.reconfigureClustersAffectedCounter(operation.operation().label(),
+                error.isPresent() ? OUTCOME_FAILURE : OUTCOME_SUCCESS).increment();
+        return error;
     }
 
     /**
@@ -172,15 +207,6 @@ public class ConfigurationReloadOrchestrator {
     private CompletableFuture<ReconfigureResult> commit(Configuration newConfig, List<ReconfigureError> errors) {
         this.currentConfiguration = newConfig;
         return CompletableFuture.completedFuture(ReconfigureResult.of(errors));
-    }
-
-    private void rejectIfModifyRequested(ChangeResult changes) {
-        if (!changes.clustersToModify().isEmpty()) {
-            throw new UnsupportedOperationException(
-                    "KafkaProxy.reconfigure() does not yet support modify operations. "
-                            + "This reconfigure was rejected because it would have required "
-                            + changes.clustersToModify().size() + " cluster modify operation(s).");
-        }
     }
 
     private ChangeResult aggregateChanges(Configuration oldConfig, Configuration newConfig) {

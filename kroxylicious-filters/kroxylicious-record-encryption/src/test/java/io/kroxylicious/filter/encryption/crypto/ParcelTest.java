@@ -18,12 +18,9 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import org.apache.kafka.common.header.internals.RecordHeader;
-import org.apache.kafka.common.record.Record;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.mockito.Mockito;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,11 +29,14 @@ import com.google.common.reflect.ClassPath;
 
 import io.kroxylicious.filter.encryption.config.ParcelVersion;
 import io.kroxylicious.filter.encryption.config.RecordField;
+import io.kroxylicious.kafka.common.header.internals.RecordHeader;
+import io.kroxylicious.kafka.common.record.internal.Record;
 import io.kroxylicious.kafka.transform.BatchAwareMemoryRecordsBuilder;
 import io.kroxylicious.testing.filter.record.RecordTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -73,7 +73,7 @@ class ParcelTest {
 
         buffer.flip();
 
-        BatchAwareMemoryRecordsBuilder mockBuilder = Mockito.mock(BatchAwareMemoryRecordsBuilder.class);
+        BatchAwareMemoryRecordsBuilder mockBuilder = mock(BatchAwareMemoryRecordsBuilder.class);
         parcel.readParcel(buffer, record, (v, h) -> mockBuilder.appendWithOffset(record.offset(), record.timestamp(), record.key(), v, h));
         verify(mockBuilder).appendWithOffset(record.offset(), record.timestamp(), record.key(), expectedValue, record.headers());
         assertThat(buffer.remaining()).isZero();
@@ -82,8 +82,9 @@ class ParcelTest {
     private record Header(@JsonProperty(required = true) ByteBuffer keyBase64, ByteBuffer valueBase64) {}
 
     private record ParcelContents(ByteBuffer valueBase64, @JsonProperty(required = true) List<ParcelTest.Header> headers) {
-        org.apache.kafka.common.header.Header[] kafkaHeaders() {
-            return this.headers.stream().map(header -> new RecordHeader(header.keyBase64(), header.valueBase64())).toArray(org.apache.kafka.common.header.Header[]::new);
+        io.kroxylicious.kafka.common.header.Header[] kafkaHeaders() {
+            return this.headers.stream().map(header -> new RecordHeader(header.keyBase64(), header.valueBase64()))
+                    .toArray(io.kroxylicious.kafka.common.header.Header[]::new);
         }
     }
 
@@ -146,8 +147,8 @@ class ParcelTest {
     @MethodSource("exemplarStream")
     void shouldDeserializeExpectedContentsFromBytes(String name, NamedExemplar exemplar) {
         failOnVersionWithoutExemplar(exemplar);
-        Record mock = Mockito.mock(Record.class);
-        when(mock.headers()).thenReturn(new org.apache.kafka.common.header.Header[0]);
+        Record mock = mock(Record.class);
+        when(mock.headers()).thenReturn(new io.kroxylicious.kafka.common.header.Header[0]);
         ParcelContents expected = exemplar.deserializedParcelContents;
         try {
             ParcelVersionResolver.ALL.fromName(exemplar.version).readParcel(exemplar.serialized(), mock, (byteBuffer, headers) -> {

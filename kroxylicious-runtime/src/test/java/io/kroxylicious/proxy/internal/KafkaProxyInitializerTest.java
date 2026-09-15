@@ -9,6 +9,7 @@ package io.kroxylicious.proxy.internal;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -26,11 +27,11 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.hamcrest.MockitoHamcrest;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelId;
@@ -48,18 +49,25 @@ import io.netty.handler.ssl.SniHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.internal.StringUtil;
 
-import io.kroxylicious.proxy.bootstrap.FilterChainFactory;
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
+import io.kroxylicious.proxy.bootstrap.RouterChainFactory;
 import io.kroxylicious.proxy.config.CacheConfiguration;
 import io.kroxylicious.proxy.config.NettySettings;
 import io.kroxylicious.proxy.config.ProxyProtocolMode;
 import io.kroxylicious.proxy.config.ServiceBasedPluginFactoryRegistry;
 import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.config.tls.Tls;
-import io.kroxylicious.proxy.internal.net.Endpoint;
 import io.kroxylicious.proxy.internal.net.EndpointBinding;
 import io.kroxylicious.proxy.internal.net.EndpointBindingResolver;
+import io.kroxylicious.proxy.internal.net.EndpointReconciler;
 import io.kroxylicious.proxy.internal.net.EndpointResolutionException;
+import io.kroxylicious.proxy.internal.routing.DirectRouting;
+import io.kroxylicious.proxy.internal.routing.DynamicRouting;
+import io.kroxylicious.proxy.internal.routing.RouteDescriptor;
+import io.kroxylicious.proxy.internal.routing.RoutingHandler;
+import io.kroxylicious.proxy.internal.routing.RoutingTerminalHandler;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
+import io.kroxylicious.proxy.router.Router;
 import io.kroxylicious.proxy.service.NodeIdentificationStrategy;
 
 import static io.kroxylicious.proxy.internal.KafkaProxyInitializer.LOGGING_INBOUND_ERROR_HANDLER_NAME;
@@ -71,10 +79,12 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -105,7 +115,6 @@ class KafkaProxyInitializerTest {
     private KafkaProxyInitializer kafkaProxyInitializer;
     private CompletionStage<EndpointBinding> bindingStage;
     private VirtualClusterModel virtualClusterModel;
-    private FilterChainFactory filterChainFactory;
     private NettySettings proxyNettySettings;
 
     @BeforeEach
@@ -113,7 +122,6 @@ class KafkaProxyInitializerTest {
         virtualClusterModel = buildVirtualCluster(false, false);
         pfr = new ServiceBasedPluginFactoryRegistry();
         bindingStage = CompletableFuture.completedStage(endpointBinding);
-        filterChainFactory = new FilterChainFactory(pfr, List.of());
         proxyNettySettings = null; // use defaults
         final InetSocketAddress localhost = new InetSocketAddress(0);
         ChannelId channelId = DefaultChannelId.newInstance();
@@ -122,7 +130,10 @@ class KafkaProxyInitializerTest {
         when(channel.pipeline()).thenReturn(channelPipeline);
         when(channel.eventLoop()).thenReturn(eventLoop);
         when(channel.localAddress()).thenReturn(InetSocketAddress.createUnresolved("localhost", 9099));
-        when(channel.closeFuture()).thenReturn(mock(ChannelFuture.class));
+        ChannelFuture channelCloseFuture = mock(ChannelFuture.class);
+        ChannelFuture closeFuture = mock(ChannelFuture.class);
+        when(channel.closeFuture()).thenReturn(channelCloseFuture);
+        when(channel.close()).thenReturn(closeFuture);
 
         when(acceptingSocketChannel.localAddress()).thenReturn(localhost);
         when(endpointBinding.endpointGateway()).thenReturn(virtualClusterModel.gateways().values().iterator().next());
@@ -130,11 +141,11 @@ class KafkaProxyInitializerTest {
 
     private VirtualClusterModel buildVirtualCluster(boolean logNetwork, boolean logFrames) {
         final Optional<Tls> tls = Optional.empty();
-        VirtualClusterModel testCluster = new VirtualClusterModel("testCluster", new TargetCluster("localhost:9090", tls), logNetwork,
-                logFrames, List.of(), CacheConfiguration.DEFAULT, null, Duration.ofSeconds(10));
+        VirtualClusterModel testCluster = new VirtualClusterModel("testCluster",
+                new DirectRouting("upstream", new TargetCluster("localhost:9090", tls)), logNetwork,
+                logFrames, List.of(), CacheConfiguration.DEFAULT, null, Duration.ofSeconds(10), null);
         testCluster.addGateway("defaullt", mock(NodeIdentificationStrategy.class), tls);
         return testCluster;
-
     }
 
     @Test
@@ -187,7 +198,7 @@ class KafkaProxyInitializerTest {
     void shouldResolveWhenPlainChannelActivated() throws Exception {
         // Given
         final EndpointBindingResolver bindingResolver = mock(EndpointBindingResolver.class);
-        when(bindingResolver.resolve(any(Endpoint.class), isNull())).thenReturn(bindingStage);
+        when(bindingResolver.resolve(any(Channel.class), isNull())).thenReturn(bindingStage);
         kafkaProxyInitializer = createKafkaProxyInitializer(false, bindingResolver);
         when(channelPipeline.addLast(eq("plainResolver"), plainChannelResolverCaptor.capture())).thenReturn(channelPipeline);
 
@@ -198,14 +209,14 @@ class KafkaProxyInitializerTest {
         plainChannelResolverCaptor.getValue().channelActive(channelHandlerContext);
 
         // Then
-        verify(bindingResolver).resolve(any(Endpoint.class), isNull());
+        verify(bindingResolver).resolve(any(Channel.class), isNull());
     }
 
     @Test
     void shouldRemovePlainChannelInitializerOnceComplete() throws Exception {
         // Given
         final EndpointBindingResolver bindingResolver = mock(EndpointBindingResolver.class);
-        when(bindingResolver.resolve(any(Endpoint.class), isNull())).thenReturn(bindingStage);
+        when(bindingResolver.resolve(any(Channel.class), isNull())).thenReturn(bindingStage);
         kafkaProxyInitializer = createKafkaProxyInitializer(false, bindingResolver);
         when(channelPipeline.addLast(eq("plainResolver"), plainChannelResolverCaptor.capture())).thenReturn(channelPipeline);
 
@@ -238,7 +249,7 @@ class KafkaProxyInitializerTest {
         verifyFrontendHandlerAdded(orderedVerifyer);
         verifyForwardingHandlerAdded(orderedVerifyer);
         verifyErrorHandlerAdded(orderedVerifyer);
-        Mockito.verifyNoMoreInteractions(channelPipeline);
+        verifyNoMoreInteractions(channelPipeline);
     }
 
     @ParameterizedTest
@@ -261,7 +272,7 @@ class KafkaProxyInitializerTest {
         verifyFrontendHandlerAdded(orderedVerifyer);
         verifyForwardingHandlerAdded(orderedVerifyer);
         verifyErrorHandlerAdded(orderedVerifyer);
-        Mockito.verifyNoMoreInteractions(channelPipeline);
+        verifyNoMoreInteractions(channelPipeline);
     }
 
     @ParameterizedTest
@@ -284,7 +295,7 @@ class KafkaProxyInitializerTest {
         verifyFrontendHandlerAdded(orderedVerifyer);
         verifyForwardingHandlerAdded(orderedVerifyer);
         verifyErrorHandlerAdded(orderedVerifyer);
-        Mockito.verifyNoMoreInteractions(channelPipeline);
+        verifyNoMoreInteractions(channelPipeline);
     }
 
     @ParameterizedTest
@@ -408,12 +419,69 @@ class KafkaProxyInitializerTest {
         return createKafkaProxyInitializer(tls, ProxyProtocolMode.DISABLED, bindingResolver);
     }
 
+    @Test
+    void shouldAddRouterDispatchHandlerForDynamicRoutingOnBindingComplete() {
+        // Given
+        var routerChainFactory = mock(RouterChainFactory.class);
+        var router = mock(Router.class);
+        when(routerChainFactory.createRouter(any(), any())).thenReturn(router);
+        when(router.staticRoutes()).thenReturn(Map.of());
+
+        virtualClusterModel = buildDynamicRoutingVirtualCluster(routerChainFactory);
+        when(endpointBinding.endpointGateway()).thenReturn(virtualClusterModel.gateways().values().iterator().next());
+        kafkaProxyInitializer = createKafkaProxyInitializer(false, (endpoint, sniHostname) -> bindingStage);
+
+        // When
+        kafkaProxyInitializer.initConnection(channel, endpointBinding, new KafkaSession(KafkaSessionState.ESTABLISHING));
+
+        // Then
+        verify(channelPipeline).addLast(eq("routerDispatchHandler"), isA(RoutingHandler.class));
+        verify(channelPipeline).addLast(eq("routingTerminalHandler"), isA(RoutingTerminalHandler.class));
+    }
+
+    @Test
+    void shouldKeepDecodingApiKeysStaticallyRoutedToNestedRouter() {
+        // Given
+        var nestedRoute = new RouteDescriptor("to-nested", 0, null, "inner-router", List.of());
+        var clusterRoute = new RouteDescriptor("to-cluster", 1, new TargetCluster("localhost:9090", Optional.empty()), null, List.of());
+        var staticRoutes = Map.of(ApiKeys.LIST_OFFSETS, "to-nested", ApiKeys.OFFSET_COMMIT, "to-cluster");
+        var routeDescs = Map.of("to-nested", nestedRoute, "to-cluster", clusterRoute);
+
+        // When
+        var decodedKeys = KafkaProxyInitializer.computeDecodedKeysForRouter(staticRoutes, routeDescs);
+
+        // Then
+        assertThat(decodedKeys).contains(ApiKeys.LIST_OFFSETS)
+                .doesNotContain(ApiKeys.OFFSET_COMMIT);
+    }
+
+    @Test
+    void shouldKeepDecodingApiKeysWhenStaticRouteNotFoundInDescriptors() {
+        // Given
+        var staticRoutes = Map.of(ApiKeys.LIST_OFFSETS, "unknown-route");
+
+        // When
+        var decodedKeys = KafkaProxyInitializer.computeDecodedKeysForRouter(staticRoutes, Map.of());
+
+        // Then
+        assertThat(decodedKeys).contains(ApiKeys.LIST_OFFSETS);
+    }
+
+    private VirtualClusterModel buildDynamicRoutingVirtualCluster(RouterChainFactory routerChainFactory) {
+        var route = new RouteDescriptor("default", 0, new TargetCluster("localhost:9090", Optional.empty()), null, List.of());
+        var routing = new DynamicRouting("test-router", Map.of("default", route), routerChainFactory);
+        VirtualClusterModel testCluster = new VirtualClusterModel("testCluster", routing, false, false, List.of(),
+                CacheConfiguration.DEFAULT, null, Duration.ofSeconds(10), null);
+        testCluster.addGateway("default", mock(NodeIdentificationStrategy.class), Optional.empty());
+        return testCluster;
+    }
+
     @SuppressWarnings("DataFlowIssue")
     private KafkaProxyInitializer createKafkaProxyInitializer(boolean tls,
                                                               ProxyProtocolMode proxyProtocolMode,
                                                               EndpointBindingResolver bindingResolver) {
         var vcc = mock(VirtualClusterRegistry.class);
-        Mockito.lenient().when(vcc.registerConnection(any(), any())).thenReturn(true);
+        lenient().when(vcc.registerConnection(any(), any())).thenReturn(true);
         return createKafkaProxyInitializer(tls, proxyProtocolMode, bindingResolver, vcc);
     }
 
@@ -422,11 +490,10 @@ class KafkaProxyInitializerTest {
                                                               ProxyProtocolMode proxyProtocolMode,
                                                               EndpointBindingResolver bindingResolver,
                                                               VirtualClusterRegistry vcc) {
-        return new KafkaProxyInitializer(filterChainFactory,
-                pfr,
+        return new KafkaProxyInitializer(pfr,
                 tls,
                 bindingResolver,
-                (virtualCluster, upstreamNodes) -> null,
+                mock(EndpointReconciler.class),
                 proxyProtocolMode,
                 new ApiVersionsServiceImpl(),
                 Optional.ofNullable(proxyNettySettings),

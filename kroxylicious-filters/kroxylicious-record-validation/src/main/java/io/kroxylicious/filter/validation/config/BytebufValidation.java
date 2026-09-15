@@ -70,7 +70,7 @@ public class BytebufValidation {
     }
 
     /**
-     * Are buffers valid if they are null on the {@link org.apache.kafka.common.record.Record}
+     * Are buffers valid if they are null on the {@link io.kroxylicious.kafka.common.record.internal.Record}
      * @return allowNulls
      */
     public boolean isAllowNulls() {
@@ -78,7 +78,7 @@ public class BytebufValidation {
     }
 
     /**
-     * Are buffers valid if they are empty (non-null, 0 length) on the {@link org.apache.kafka.common.record.Record}
+     * Are buffers valid if they are empty (non-null, 0 length) on the {@link io.kroxylicious.kafka.common.record.internal.Record}
      * @return allowEmpty
      */
     public boolean isAllowEmpty() {
@@ -86,6 +86,8 @@ public class BytebufValidation {
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass") // Jackson-bound config type, and not final. getClass() keeps equals() symmetric if a subclass ever
+    // adds further validation state.
     public boolean equals(Object o) {
         if (this == o) {
             return true;

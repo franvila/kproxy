@@ -24,8 +24,8 @@ import io.kroxylicious.authorizer.service.AuthorizeResult;
 import io.kroxylicious.authorizer.service.Authorizer;
 import io.kroxylicious.authorizer.service.Decision;
 import io.kroxylicious.authorizer.service.ResourceType;
-import io.kroxylicious.proxy.authentication.Principal;
-import io.kroxylicious.proxy.authentication.Subject;
+import io.kroxylicious.identity.Identity;
+import io.kroxylicious.identity.Principal;
 import io.kroxylicious.proxy.tag.VisibleForTesting;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
@@ -50,6 +50,7 @@ import edu.umd.cs.findbugs.annotations.Nullable;
  *     according to a simple grammar (see {@code src/main/antlr4/io/kroxylicious/authorizer/provider/acl/parser/AclRules.g4}).</li>
  * </ul>
  */
+@SuppressWarnings({ "java:S5738", "removal" })
 public class AclAuthorizer implements Authorizer {
 
     record ResourceGrants(
@@ -62,15 +63,32 @@ public class AclAuthorizer implements Authorizer {
 
     private final Set<Class<? extends ResourceType<?>>> usedResourceTypes = new HashSet<>();
 
+    /**
+     * Constructs an authorizer with an initially empty set of rules, which denies every action.
+     * Use {@link #builder()} to construct an authorizer with rules.
+     */
+    public AclAuthorizer() {
+        // explicit ctor needed for javadoc
+    }
+
     static Builder builder() {
         return new Builder();
     }
 
+    /**
+     * Fluent builder stage for selecting the principals to which an allow or deny rule applies.
+     */
     public static class PrincipalSelectorBuilder {
         private final Builder builder;
         private final Class<? extends Principal> principalClass;
         private final boolean isAllowRule;
 
+        /**
+         * Constructs a PrincipalSelectorBuilder.
+         * @param builder the top-level builder.
+         * @param isAllowRule true if building an allow rule, false if building a deny rule.
+         * @param principalClass the type of principal to which the rule applies.
+         */
         public PrincipalSelectorBuilder(Builder builder,
                                         boolean isAllowRule,
                                         Class<? extends Principal> principalClass) {
@@ -79,12 +97,22 @@ public class AclAuthorizer implements Authorizer {
             this.principalClass = principalClass;
         }
 
+        /**
+         * Selects principals whose name is equal to the given name.
+         * @param principalName the principal name.
+         * @return the next stage in the fluent builder.
+         */
         public OperationsBuilder withNameEqualTo(String principalName) {
             return new OperationsBuilder(builder,
                     isAllowRule,
                     Set.of(new ResourceMatcherNameEquals<>(principalClass, principalName)));
         }
 
+        /**
+         * Selects principals whose name is any of the given names.
+         * @param principalNames the principal names.
+         * @return the next stage in the fluent builder.
+         */
         public OperationsBuilder withNameIn(Set<String> principalNames) {
             return new OperationsBuilder(builder,
                     isAllowRule,
@@ -93,15 +121,27 @@ public class AclAuthorizer implements Authorizer {
                             .collect(Collectors.toSet()));
         }
 
+        /**
+         * Selects principals whose name starts with the given prefix.
+         * @param principalNamePrefix the principal name prefix.
+         * @return the next stage in the fluent builder.
+         */
         public OperationsBuilder withNameStartingWith(String principalNamePrefix) {
             return new OperationsBuilder(builder, isAllowRule, Set.of(new ResourceMatcherNameStarts<>(principalClass, principalNamePrefix)));
         }
 
+        /**
+         * Selects all principals of the selected type, whatever their name.
+         * @return the next stage in the fluent builder.
+         */
         public OperationsBuilder withAnyName() {
             return new OperationsBuilder(builder, isAllowRule, Set.of(new ResourceMatcherAnyOfType<>(principalClass)));
         }
     }
 
+    /**
+     * Fluent builder stage for selecting the subjects to which an allow or deny rule applies.
+     */
     public static class SubjectSelectorBuilder {
 
         private final Builder builder;
@@ -113,12 +153,21 @@ public class AclAuthorizer implements Authorizer {
             this.allow = allow;
         }
 
+        /**
+         * Selects subjects having a principal of the given type.
+         * @param userPrincipalClass the type of principal to which the rule applies.
+         * @return the next stage in the fluent builder.
+         */
         public PrincipalSelectorBuilder subjectsHavingPrincipal(Class<? extends Principal> userPrincipalClass) {
             return new PrincipalSelectorBuilder(builder, allow,
                     userPrincipalClass);
         }
     }
 
+    /**
+     * Fluent builder stage for selecting the resources to which an allow or deny rule applies.
+     * @param <O> the type of operation to which the rule applies.
+     */
     public static class ResourceBuilder<O extends Enum<O> & ResourceType<O>> {
         private final Builder builder;
         private final Set<? extends OrderedKey<Principal>> principalMatchers;
@@ -126,6 +175,14 @@ public class AclAuthorizer implements Authorizer {
         private final Set<O> operations;
         private final boolean isAllowRule;
 
+        /**
+         * Constructs a ResourceBuilder.
+         * @param builder the top-level builder.
+         * @param isAllowRule true if building an allow rule, false if building a deny rule.
+         * @param principalMatchers the matchers for the principals to which the rule applies.
+         * @param operationsClass the type of operation to which the rule applies.
+         * @param operations the operations to which the rule applies.
+         */
         public ResourceBuilder(Builder builder,
                                boolean isAllowRule,
                                Set<? extends OrderedKey<Principal>> principalMatchers,
@@ -138,6 +195,11 @@ public class AclAuthorizer implements Authorizer {
             this.operations = Objects.requireNonNull(operations);
         }
 
+        /**
+         * Adds a rule applying to the resource with the given name.
+         * @param resourceName the resource name.
+         * @return the top-level builder.
+         */
         public Builder onResourceWithNameEqualTo(String resourceName) {
             for (var principalMatcher : principalMatchers) {
                 builder.aclAuthorizer.internalAllowOrDeny(isAllowRule,
@@ -148,6 +210,11 @@ public class AclAuthorizer implements Authorizer {
             return builder;
         }
 
+        /**
+         * Adds a rule applying to the resources with any of the given names.
+         * @param resourceNames the resource names.
+         * @return the top-level builder.
+         */
         public Builder onResourcesWithNameIn(Set<String> resourceNames) {
             for (var principalMatcher : principalMatchers) {
                 for (String resourceName : resourceNames) {
@@ -160,6 +227,11 @@ public class AclAuthorizer implements Authorizer {
             return builder;
         }
 
+        /**
+         * Adds a rule applying to the resources whose name starts with the given prefix.
+         * @param resourceNamePrefix the resource name prefix.
+         * @return the top-level builder.
+         */
         public Builder onResourcesWithNameStartingWith(String resourceNamePrefix) {
             for (var principalMatcher : principalMatchers) {
                 builder.aclAuthorizer.internalAllowOrDeny(isAllowRule,
@@ -170,6 +242,11 @@ public class AclAuthorizer implements Authorizer {
             return builder;
         }
 
+        /**
+         * Adds a rule applying to the resources whose name matches the given regular expression.
+         * @param resourceNameRegex the resource name regular expression.
+         * @return the top-level builder.
+         */
         public Builder onResourcesWithNameMatching(String resourceNameRegex) {
             for (var principalMatcher : principalMatchers) {
                 builder.aclAuthorizer.internalAllowOrDeny(isAllowRule,
@@ -180,6 +257,10 @@ public class AclAuthorizer implements Authorizer {
             return builder;
         }
 
+        /**
+         * Adds a rule applying to all resources of the selected type, whatever their name.
+         * @return the top-level builder.
+         */
         public Builder onAllResources() {
             for (var principalMatcher : principalMatchers) {
                 builder.aclAuthorizer.internalAllowOrDeny(isAllowRule,
@@ -191,6 +272,9 @@ public class AclAuthorizer implements Authorizer {
         }
     }
 
+    /**
+     * Fluent builder stage for selecting the operations to which an allow or deny rule applies.
+     */
     public static class OperationsBuilder {
 
         private final Builder builder;
@@ -213,6 +297,12 @@ public class AclAuthorizer implements Authorizer {
                     EnumSet.allOf(cls));
         }
 
+        /**
+         * Selects the given operations.
+         * @param operations the operations to which the rule applies; must not be empty.
+         * @param <O> the type of operation to which the rule applies.
+         * @return the next stage in the fluent builder.
+         */
         @SuppressWarnings({ "rawtypes", "unchecked" })
         public <O extends Enum<O> & ResourceType<O>> ResourceBuilder<O> operations(Set<O> operations) {
             EnumSet<O> os = EnumSet.copyOf(operations);
@@ -225,17 +315,39 @@ public class AclAuthorizer implements Authorizer {
 
     }
 
+    /**
+     * A fluent builder of {@link AclAuthorizer} instances.
+     */
     public static class Builder {
         AclAuthorizer aclAuthorizer = new AclAuthorizer();
 
+        /**
+         * Constructs a Builder.
+         */
+        public Builder() {
+            // explicit ctor needed for javadoc
+        }
+
+        /**
+         * Starts building a rule which allows subjects to perform actions.
+         * @return the next stage in the fluent builder.
+         */
         public SubjectSelectorBuilder allow() {
             return new SubjectSelectorBuilder(this, true);
         }
 
+        /**
+         * Starts building a rule which denies subjects from performing actions.
+         * @return the next stage in the fluent builder.
+         */
         public SubjectSelectorBuilder deny() {
             return new SubjectSelectorBuilder(this, false);
         }
 
+        /**
+         * Builds the authorizer.
+         * @return the built authorizer.
+         */
         public AclAuthorizer build() {
             return aclAuthorizer;
         }
@@ -296,7 +408,7 @@ public class AclAuthorizer implements Authorizer {
 
     private static @Nullable Decision authorizeInternal(
                                                         TypeNameMap<Principal, ResourceGrants> allowPerPrincipal,
-                                                        Subject subject,
+                                                        Identity subject,
                                                         Action action,
                                                         Decision whenFound,
                                                         @Nullable Decision whenNotFound) {
@@ -365,7 +477,7 @@ public class AclAuthorizer implements Authorizer {
     }
 
     @Override
-    public CompletionStage<AuthorizeResult> authorize(Subject subject, List<Action> actions) {
+    public CompletionStage<AuthorizeResult> authorize(Identity subject, List<Action> actions) {
         List<Action> allowedActions = new ArrayList<>();
         List<Action> deniedActions = new ArrayList<>();
         for (var action : actions) {

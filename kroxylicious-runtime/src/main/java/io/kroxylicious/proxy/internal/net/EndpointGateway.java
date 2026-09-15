@@ -9,6 +9,7 @@ package io.kroxylicious.proxy.internal.net;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import io.netty.handler.ssl.SslContext;
 
@@ -16,15 +17,20 @@ import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.model.VirtualClusterModel;
 import io.kroxylicious.proxy.service.HostPort;
 
-import edu.umd.cs.findbugs.annotations.Nullable;
-
 /**
  * A gateway to an endpoint.
  */
 public interface EndpointGateway {
     /**
      * Target cluster associated with this listener.
+     * <p>
+     * Only meaningful for direct-routed virtual clusters, used by bindings that need an upstream
+     * bootstrap target for metadata discovery before broker topology is known. Not used by
+     * identity resolution ({@link AddressingSpec}/{@link BindingSpec}), which never needs to know
+     * where a connection is ultimately forwarded to.
+     *
      * @return target cluster
+     * @throws UnsupportedOperationException if this gateway's virtual cluster uses dynamic routing
      */
     TargetCluster targetCluster();
 
@@ -43,6 +49,11 @@ public interface EndpointGateway {
      */
     boolean requiresServerNameIndication();
 
+    /**
+     * The virtual cluster to which this gateway belongs.
+     *
+     * @return the virtual cluster model
+     */
     VirtualClusterModel virtualCluster();
 
     /**
@@ -61,6 +72,11 @@ public interface EndpointGateway {
      */
     HostPort getBrokerAddress(int nodeId) throws IllegalArgumentException;
 
+    /**
+     * SSL context used to accept downstream (client) TLS connections.
+     *
+     * @return the SSL context, or empty if this gateway does not use TLS
+     */
     Optional<SslContext> getDownstreamSslContext();
 
     /**
@@ -80,8 +96,18 @@ public interface EndpointGateway {
      */
     Optional<String> getBindAddress();
 
+    /**
+     * Ports that this gateway requires exclusive use of.
+     *
+     * @return set of exclusive port numbers
+     */
     Set<Integer> getExclusivePorts();
 
+    /**
+     * Ports that this gateway can share with other gateways.
+     *
+     * @return set of shared port numbers
+     */
     Set<Integer> getSharedPorts();
 
     /**
@@ -92,23 +118,42 @@ public interface EndpointGateway {
     Map<Integer, HostPort> discoveryAddressMap();
 
     /**
-     * Generates the node id implied by the given broker address (advertised hostname and bind port).
-     * This method make sense only for implementation that embed node id information into the broker
-     * address.  This information is used at startup time to allow a client that already in possession
-     * of a broker address to reconnect to the cluster via Kroxylicious using only that address.
-     * <br/>
-     * This is an optional method. An implementation can return null.
-     *
-     * @param brokerAddress broker address
-     * @return broker id
-     */
-    @Nullable
-    Integer getBrokerIdFromBrokerAddress(HostPort brokerAddress);
-
-    /**
      * Get the gateways name
      * @return name
      */
     String name();
+
+    /**
+     * The binding specification describing what sockets this gateway needs.
+     *
+     * @return the binding spec
+     */
+    BindingSpec bindingSpec();
+
+    /**
+     * The addressing specification used to identify the target of an incoming connection.
+     *
+     * @return the addressing spec
+     */
+    AddressingSpec addressingSpec();
+
+    /**
+     * Resolves the actual bound port for the given virtual node.
+     *
+     * @param virtualNodeId the virtual node
+     * @return the actual bound port
+     * @throws IllegalStateException if the port cannot be resolved (e.g. port 0 before binding)
+     */
+    int resolvePort(ProxyNodeId virtualNodeId);
+
+    /**
+     * Binds the port resolver used by {@link #resolvePort(ProxyNodeId)}.
+     * Called from {@code KafkaProxy.startup()} after endpoint registration.
+     *
+     * @param resolver maps a {@link ProxyNodeId} to its actual bound port
+     */
+    default void bindPortResolver(Function<ProxyNodeId, Integer> resolver) {
+        // no-op for implementations that predate port resolution
+    }
 
 }

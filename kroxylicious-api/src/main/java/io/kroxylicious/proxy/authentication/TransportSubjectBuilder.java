@@ -18,8 +18,9 @@ import io.kroxylicious.proxy.tls.ClientTlsContext;
  * <p>A {@code TransportSubjectBuilder} instance is constructed by a {@link TransportSubjectBuilderService},
  * which in turn is specified on a virtual cluster.</p>
  *
- * <p>See {@link SaslSubjectBuilder} for a similar interface use for building a {@code Subject} based on SASL authentication.</p>
+ * <p>See {@link SaslSubjectBuilder} for a similar interface used for building a {@code Subject} based on SASL authentication.</p>
  */
+@SuppressWarnings({ "java:S5738", "removal" })
 public interface TransportSubjectBuilder {
 
     /**
@@ -31,8 +32,12 @@ public interface TransportSubjectBuilder {
      */
     CompletionStage<Subject> buildTransportSubject(Context context);
 
+    /**
+     * The context that's passed to {@link #buildTransportSubject(Context)}.
+     */
     interface Context {
         /**
+         * Returns the TLS context for the client connection, or empty if the client connection is not TLS.
          * @return The TLS context for the client connection, or empty if the client connection is not TLS.
          */
         Optional<ClientTlsContext> clientTlsContext();

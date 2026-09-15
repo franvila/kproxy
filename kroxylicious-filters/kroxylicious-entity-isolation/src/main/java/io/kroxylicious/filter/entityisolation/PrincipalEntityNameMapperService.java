@@ -17,9 +17,21 @@ import io.kroxylicious.proxy.tag.VisibleForTesting;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
 
+/**
+ * An {@link EntityNameMapperService} that builds a {@link PrincipalEntityNameMapper}, which
+ * isolates entities by prefixing entity names with the name of a principal taken from the
+ * authenticated subject.
+ */
 @Plugin(configType = PrincipalEntityNameMapperService.Config.class)
 public class PrincipalEntityNameMapperService implements EntityNameMapperService<PrincipalEntityNameMapperService.Config> {
     private static final Config DEFAULT_CONFIG = new Config(User.class, "-");
+
+    /**
+     * Creates the principal entity name mapper service.
+     */
+    public PrincipalEntityNameMapperService() {
+        // empty
+    }
 
     @Nullable
     private Config effectiveConfig;
@@ -54,6 +66,6 @@ public class PrincipalEntityNameMapperService implements EntityNameMapperService
      * @param principalType the type of principal that will be prepended to the entity name to isolate the entity.
      * @param separator the separator character
      */
-    record Config(@Nullable @JsonProperty() Class<? extends Principal> principalType,
+    record Config(@Nullable @JsonProperty Class<? extends Principal> principalType,
                   @Nullable @JsonProperty String separator) {}
 }

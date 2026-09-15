@@ -123,7 +123,7 @@ echo "Checking out tags/${RELEASE_TAG} in  in $(git remote get-url "${REPOSITORY
 git checkout "tags/${RELEASE_TAG}"
 
 # Run docs build
-mvn -P dist package --pl kroxylicious-docs --am
+mvn --activate-profiles dist package --projects kroxylicious-docs --also-make
 
 # Move to temp directory so we don't end up with website files in the main repository
 cd "${WEBSITE_TMP}"
@@ -138,13 +138,14 @@ git checkout -b "${RELEASE_DOCS_BRANCH}"
 echo "Copying release docs from ${KROXYLICIOUS_DOCS_LOCATION} to ${WEBSITE_DOCS_LOCATION}"
 cp -R "${KROXYLICIOUS_DOCS_LOCATION}"/* "${WEBSITE_DOCS_LOCATION}"
 
-echo "Updating latest release to ${RELEASE_VERSION}"
-${SED} -i -e "s/^latestRelease: .*$/latestRelease: ${RELEASE_VERSION}/g" _data/kroxylicious.yml
+"${SCRIPT_DIR}/update-latest-docs-release.sh" _data/kroxylicious.yml "${RELEASE_VERSION}"
 
 echo "Committing release documentation to git"
 # Commit and push changes to branch in `kroxylicious/kroxylicious.github.io`
 git add "${WEBSITE_DOCS_LOCATION}"
 git commit --message "Prepare ${RELEASE_TAG} release documentation" --signoff
+# GIT_DRYRUN intentionally expands to zero arguments when not in dry-run mode.
+# shellcheck disable=SC2086
 git push "${REPOSITORY}" "${RELEASE_DOCS_BRANCH}" ${GIT_DRYRUN:-}
 
 if [[ "${DRY_RUN:-false}" == true ]]; then
@@ -170,3 +171,4 @@ gh pr create --head "${RELEASE_DOCS_BRANCH}" \
              --title "Kroxylicious ${RELEASE_TAG} release documentation ${RELEASE_DATE}" \
              --body "${BODY}" \
              --repo "$(gh repo set-default -v)"
+

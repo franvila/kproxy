@@ -10,9 +10,13 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
+import io.kroxylicious.proxy.config.ClusterDefinition;
 import io.kroxylicious.proxy.config.Configuration;
 import io.kroxylicious.proxy.config.NamedFilterDefinition;
 import io.kroxylicious.proxy.config.PortIdentifiesNodeIdentificationStrategy;
+import io.kroxylicious.proxy.config.RouteDefinition;
+import io.kroxylicious.proxy.config.RouteTarget;
+import io.kroxylicious.proxy.config.RouterDefinition;
 import io.kroxylicious.proxy.config.TargetCluster;
 import io.kroxylicious.proxy.config.VirtualCluster;
 import io.kroxylicious.proxy.config.VirtualClusterGateway;
@@ -24,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Cross-detector integration tests for the change-detection pipeline. Each individual
- * detector is unit-tested in its own file; this class verifies that running both detectors
+ * detector is unit-tested in its own file; this class verifies that running the detectors
  * over the same configuration and merging their results produces a well-formed
  * {@link ChangeResult} — specifically, that the pairwise-disjointness invariant
  * enforced by {@link ChangeResult#merge(ChangeResult)} holds across realistic scenarios
@@ -34,6 +38,7 @@ class ChangeDetectorPipelineTest {
 
     private final VirtualClusterChangeDetector vccDetector = new VirtualClusterChangeDetector();
     private final FilterChangeDetector filterDetector = new FilterChangeDetector();
+    private final RoutingGraphChangeDetector routingDetector = new RoutingGraphChangeDetector();
 
     @Test
     void clusterWithBothGatewayAndFilterChangeAppearsOnceInModify() {
@@ -51,9 +56,9 @@ class ChangeDetectorPipelineTest {
                 new TargetCluster("kafka:9092", Optional.empty()),
                 List.of(gateway("default", 9999)), // port changed
                 false, false, List.of("filter-a"));
-        var oldConfig = new Configuration(null, List.of(oldFilter), null,
+        var oldConfig = new Configuration(null, null, List.of(oldFilter), null, null,
                 List.of(oldVc), null, false, Optional.empty(), null, null);
-        var newConfig = new Configuration(null, List.of(newFilter), null,
+        var newConfig = new Configuration(null, null, List.of(newFilter), null, null,
                 List.of(newVc), null, false, Optional.empty(), null, null);
         var context = new ConfigurationChangeContext(oldConfig, newConfig);
 
@@ -82,9 +87,9 @@ class ChangeDetectorPipelineTest {
         var newFilter = new NamedFilterDefinition("filter-a", "io.kroxylicious.test.FakeFilter", "v2");
         var existing = vc("existing", List.of("filter-a"));
         var newlyAdded = vc("newly-added", List.of("filter-a"));
-        var oldConfig = new Configuration(null, List.of(oldFilter), null,
+        var oldConfig = new Configuration(null, null, List.of(oldFilter), null, null,
                 List.of(existing), null, false, Optional.empty(), null, null);
-        var newConfig = new Configuration(null, List.of(newFilter), null,
+        var newConfig = new Configuration(null, null, List.of(newFilter), null, null,
                 List.of(existing, newlyAdded), null, false, Optional.empty(), null, null);
         var context = new ConfigurationChangeContext(oldConfig, newConfig);
 
@@ -112,9 +117,9 @@ class ChangeDetectorPipelineTest {
         var oldFilter = new NamedFilterDefinition("filter-a", "io.kroxylicious.test.FakeFilter", "v1");
         var goingAway = vc("going-away", List.of("filter-a"));
         var staying = vcWithoutFilters("staying");
-        var oldConfig = new Configuration(null, List.of(oldFilter), null,
+        var oldConfig = new Configuration(null, null, List.of(oldFilter), null, null,
                 List.of(goingAway, staying), null, false, Optional.empty(), null, null);
-        var newConfig = new Configuration(null, null, null,
+        var newConfig = new Configuration(null, null, null, null, null,
                 List.of(staying), null, false, Optional.empty(), null, null);
         var context = new ConfigurationChangeContext(oldConfig, newConfig);
 
@@ -152,10 +157,10 @@ class ChangeDetectorPipelineTest {
         var filterChangedCluster = vc("filter-changed", List.of("filter-x"));
         var addedCluster = vcWithoutFilters("added");
 
-        var oldConfig = new Configuration(null, List.of(oldFilter), null,
+        var oldConfig = new Configuration(null, null, List.of(oldFilter), null, null,
                 List.of(keepUnchanged, removedCluster, oldGatewayChanged, filterChangedCluster),
                 null, false, Optional.empty(), null, null);
-        var newConfig = new Configuration(null, List.of(newFilter), null,
+        var newConfig = new Configuration(null, null, List.of(newFilter), null, null,
                 List.of(keepUnchanged, newGatewayChanged, filterChangedCluster, addedCluster),
                 null, false, Optional.empty(), null, null);
         var context = new ConfigurationChangeContext(oldConfig, newConfig);
@@ -174,7 +179,7 @@ class ChangeDetectorPipelineTest {
         // accidentally introduce non-empty defaults in a detector's output.
         var filter = new NamedFilterDefinition("filter-a", "io.kroxylicious.test.FakeFilter", "v1");
         var cluster = vc("cluster", List.of("filter-a"));
-        var config = new Configuration(null, List.of(filter), null,
+        var config = new Configuration(null, null, List.of(filter), null, null,
                 List.of(cluster), null, false, Optional.empty(), null, null);
         var context = new ConfigurationChangeContext(config, config);
 
@@ -203,9 +208,9 @@ class ChangeDetectorPipelineTest {
                 false, false, List.of());
         var filterChangedCluster = vc("filter-changed", List.of("filter-x"));
 
-        var oldConfig = new Configuration(null, List.of(oldFilter), null,
+        var oldConfig = new Configuration(null, null, List.of(oldFilter), null, null,
                 List.of(oldGatewayChanged, filterChangedCluster), null, false, Optional.empty(), null, null);
-        var newConfig = new Configuration(null, List.of(newFilter), null,
+        var newConfig = new Configuration(null, null, List.of(newFilter), null, null,
                 List.of(newGatewayChanged, filterChangedCluster), null, false, Optional.empty(), null, null);
         var context = new ConfigurationChangeContext(oldConfig, newConfig);
 
@@ -216,6 +221,40 @@ class ChangeDetectorPipelineTest {
 
         var merged = vccResult.merge(filterResult);
         assertThat(merged.clustersToModify()).containsExactlyInAnyOrder("gateway-changed", "filter-changed");
+        assertThat(merged.clustersToAdd()).isEmpty();
+        assertThat(merged.clustersToRemove()).isEmpty();
+    }
+
+    @Test
+    void clusterChangedAcrossAllDetectorsAppearsOnceInModify() {
+        // Given
+        var oldFilter = new NamedFilterDefinition("filter-a", "io.kroxylicious.test.FakeFilter", "config-v1");
+        var newFilter = new NamedFilterDefinition("filter-a", "io.kroxylicious.test.FakeFilter", "config-v2");
+        var clusterDefinition = new ClusterDefinition("upstream", "kafka:9092", null);
+        var route = new RouteDefinition("route-a", 0, List.of("filter-a"), new RouteTarget("upstream", null));
+        var oldRouter = new RouterDefinition("router-a", "io.kroxylicious.test.FakeRouter", "config-v1", List.of(route));
+        var newRouter = new RouterDefinition("router-a", "io.kroxylicious.test.FakeRouter", "config-v2", List.of(route));
+        var oldVc = new VirtualCluster("cluster", null, new RouteTarget(null, "router-a"),
+                List.of(gateway("default", 9192)), false, false, List.of(), null, null, null);
+        var newVc = new VirtualCluster("cluster", null, new RouteTarget(null, "router-a"),
+                List.of(gateway("default", 9192)), true, false, List.of(), null, null, null);
+        var oldConfig = new Configuration(null, List.of(clusterDefinition), List.of(oldFilter), null, List.of(oldRouter),
+                List.of(oldVc), null, false, Optional.empty(), null, null);
+        var newConfig = new Configuration(null, List.of(clusterDefinition), List.of(newFilter), null, List.of(newRouter),
+                List.of(newVc), null, false, Optional.empty(), null, null);
+        var context = new ConfigurationChangeContext(oldConfig, newConfig);
+
+        // When
+        var vccResult = vccDetector.detect(context);
+        var filterResult = filterDetector.detect(context);
+        var routingResult = routingDetector.detect(context);
+        var merged = vccResult.merge(filterResult).merge(routingResult);
+
+        // Then
+        assertThat(vccResult.clustersToModify()).containsExactly("cluster");
+        assertThat(filterResult.clustersToModify()).containsExactly("cluster");
+        assertThat(routingResult.clustersToModify()).containsExactly("cluster");
+        assertThat(merged.clustersToModify()).containsExactly("cluster");
         assertThat(merged.clustersToAdd()).isEmpty();
         assertThat(merged.clustersToRemove()).isEmpty();
     }

@@ -10,10 +10,10 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.apache.kafka.common.config.ConfigResource;
-import org.apache.kafka.common.protocol.ApiKeys;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import io.kroxylicious.kafka.common.protocol.ApiKeys;
 import io.kroxylicious.proxy.filter.FilterFactory;
 import io.kroxylicious.proxy.filter.FilterFactoryContext;
 import io.kroxylicious.proxy.plugin.Plugin;
@@ -97,6 +97,11 @@ public class EntityIsolation implements FilterFactory<EntityIsolation.Config, En
                          @JsonProperty(required = true) @PluginImplName(EntityNameMapperService.class) String mapper,
                          @PluginImplConfig(implNameProperty = "mapper") Object mapperConfig) {
 
+        /**
+         * Validates the configuration, rejecting entity types that are not yet supported.
+         *
+         * @throws IllegalArgumentException if {@code entityTypes} contains an unsupported entity type.
+         */
         public Config {
             Objects.requireNonNull(entityTypes);
             Objects.requireNonNull(mapper);

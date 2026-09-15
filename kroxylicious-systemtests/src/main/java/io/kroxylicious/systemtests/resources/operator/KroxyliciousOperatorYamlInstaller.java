@@ -40,12 +40,12 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder;
 import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinition;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder;
-import io.skodjob.testframe.enums.InstallType;
-import io.skodjob.testframe.installation.InstallationMethod;
-import io.skodjob.testframe.resources.KubeResourceManager;
-import io.skodjob.testframe.utils.ImageUtils;
-import io.skodjob.testframe.utils.PodUtils;
-import io.skodjob.testframe.utils.TestFrameUtils;
+import io.skodjob.kubetest4j.enums.InstallType;
+import io.skodjob.kubetest4j.installation.InstallationMethod;
+import io.skodjob.kubetest4j.resources.KubeResourceManager;
+import io.skodjob.kubetest4j.utils.ImageUtils;
+import io.skodjob.kubetest4j.utils.KubeTestUtils;
+import io.skodjob.kubetest4j.utils.PodUtils;
 
 import io.kroxylicious.systemtests.Constants;
 import io.kroxylicious.systemtests.Environment;
@@ -60,7 +60,7 @@ import static io.kroxylicious.systemtests.k8s.KubeClusterResource.kubeClient;
 
 /**
  * KroxyliciousOperatorYamlInstaller encapsulates the whole installation process of Kroxylicious Operator (i.e., RoleBinding, ClusterRoleBinding,
- * ConfigMap, Deployment, CustomResourceDefinition, preparation of the Namespace). Based on the @code{Environment}
+ * ConfigMap, Deployment, CustomResourceDefinition, preparation of the Namespace). Based on the {@code Environment}
  * values, this class installs Kroxylicious Operator using bundle yamls.
  */
 public class KroxyliciousOperatorYamlInstaller implements InstallationMethod {
@@ -75,6 +75,7 @@ public class KroxyliciousOperatorYamlInstaller implements InstallationMethod {
     private final String kroxyliciousOperatorName;
     private final String namespaceInstallTo;
     private Map<String, String> extraLabels;
+    private final Map<String, String> additionalEnvVars;
     private final int replicas;
 
     private String testClassName;
@@ -86,7 +87,12 @@ public class KroxyliciousOperatorYamlInstaller implements InstallationMethod {
             && ko.testClassName == null && ko.testMethodName == null;
 
     public KroxyliciousOperatorYamlInstaller(String namespaceInstallTo) {
+        this(namespaceInstallTo, Map.of());
+    }
+
+    public KroxyliciousOperatorYamlInstaller(String namespaceInstallTo, @NonNull Map<String, String> additionalEnvVars) {
         this.namespaceInstallTo = namespaceInstallTo;
+        this.additionalEnvVars = additionalEnvVars;
         this.replicas = 1;
         this.extensionContext = KubeResourceManager.get().getTestContext();
         this.kroxyliciousOperatorName = Constants.KROXYLICIOUS_OPERATOR_DEPLOYMENT_NAME;
@@ -148,7 +154,7 @@ public class KroxyliciousOperatorYamlInstaller implements InstallationMethod {
     }
 
     private void applyDeploymentFile() {
-        Deployment operatorDeployment = TestFrameUtils.configFromYaml(installDeploymentFile(),
+        Deployment operatorDeployment = KubeTestUtils.configFromYaml(installDeploymentFile(),
                 Deployment.class);
 
         String deploymentImage = operatorDeployment
@@ -188,6 +194,9 @@ public class KroxyliciousOperatorYamlInstaller implements InstallationMethod {
                                 .addToEnv(new EnvVarBuilder().withName("JAVA_OPTIONS")
                                         .withValue("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:" + DEBUG_PORT_NUMBER)
                                         .build())
+                                .addAllToEnv(additionalEnvVars.entrySet().stream()
+                                        .map(e -> new EnvVarBuilder().withName(e.getKey()).withValue(e.getValue()).build())
+                                        .toList())
                                 .addToPorts(new ContainerPortBuilder().withName(debugPortName).withContainerPort(DEBUG_PORT_NUMBER).build())
                             .endContainer()
                             .withImagePullSecrets(new LocalObjectReferenceBuilder()
@@ -266,12 +275,14 @@ public class KroxyliciousOperatorYamlInstaller implements InstallationMethod {
      */
     private void applyCrds() {
         for (Path crdPath : installCrdFiles()) {
-            CustomResourceDefinition customResourceDefinition = TestFrameUtils.configFromYaml(crdPath.toFile(), CustomResourceDefinition.class);
+            CustomResourceDefinition customResourceDefinition = KubeTestUtils.configFromYaml(crdPath.toFile(), CustomResourceDefinition.class);
             KubeResourceManager.get().createOrUpdateResourceWithWait(customResourceDefinition);
         }
     }
 
     @Override
+    @SuppressWarnings("EqualsGetClass") // Installation identity: a YAML installation is never the same installation as any other type,
+    // including a subclass of this one.
     public boolean equals(Object other) {
         if (this == other) {
             return true;

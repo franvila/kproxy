@@ -10,6 +10,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 import io.fabric8.kubernetes.api.model.ContainerPort;
+import io.fabric8.kubernetes.api.model.ObjectMetaBuilder;
 import io.fabric8.kubernetes.api.model.ServiceBuilder;
 import io.fabric8.openshift.api.model.RouteBuilder;
 
@@ -29,7 +30,7 @@ import io.kroxylicious.proxy.config.NodeIdentificationStrategyFactory;
  * Backend plumbing will include:
  * <ul>
  *     <li>container ports exposed on the Proxy Pod</li>
- *     <li>gateway configuration in the Proxy Config/li>
+ *     <li>gateway configuration in the Proxy Config</li>
  * </ul>
  */
 public interface ClusterIngressNetworkingModel {
@@ -52,6 +53,10 @@ public interface ClusterIngressNetworkingModel {
      */
     Stream<ServiceBuilder> services();
 
+    /**
+     * OpenShift Routes to be created for this model.
+     * @return a stream of RouteBuilders
+     */
     Stream<RouteBuilder> routes();
 
     /**
@@ -69,11 +74,13 @@ public interface ClusterIngressNetworkingModel {
     NodeIdentificationStrategyFactory nodeIdentificationStrategy();
 
     /**
-     * The downstream TLS to be injected into the Proxy Config for this model, if available
+     * The downstream TLS to be injected into the Proxy Config for this model, if available.
+     * @return an optional containing the TLS configuration, or empty if not available
      */
     Optional<Tls> downstreamTls();
 
     /**
+     * Whether this cluster ingress requires a shared SNI port in the proxy container.
      * @return true if this cluster ingress requires a shared SNI port in the proxy container to be provided
      */
     default boolean requiresSharedSniContainerPort() {
@@ -86,5 +93,24 @@ public interface ClusterIngressNetworkingModel {
      */
     default Optional<SharedLoadBalancerServiceRequirements> sharedLoadBalancerServiceRequirements() {
         return Optional.empty();
+    }
+
+    /** Annotation key prefix reserved for operator-managed annotations. */
+    String RESERVED_ANNOTATION_PREFIX = "kroxylicious.io/";
+
+    /**
+     * Applies {@code spec.infrastructure.annotations} from the KafkaProxyIngress to the provided metadata builder.
+     * Infrastructure annotations are applied before operator-managed annotations, so operator annotations
+     * will override any conflicting keys. Annotations with the {@code kroxylicious.io/} prefix are reserved
+     * for operator use and are silently dropped.
+     * @param builder the ObjectMetaBuilder to add annotations to
+     */
+    default void applyInfrastructureAnnotations(ObjectMetaBuilder builder) {
+        var infrastructure = ingress().getSpec().getInfrastructure();
+        if (infrastructure != null && infrastructure.getAnnotations() != null) {
+            infrastructure.getAnnotations().entrySet().stream()
+                    .filter(e -> !e.getKey().startsWith(RESERVED_ANNOTATION_PREFIX))
+                    .forEach(e -> builder.addToAnnotations(e.getKey(), e.getValue()));
+        }
     }
 }

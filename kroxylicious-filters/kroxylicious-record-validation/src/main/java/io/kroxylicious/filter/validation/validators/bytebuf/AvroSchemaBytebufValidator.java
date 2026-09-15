@@ -23,10 +23,8 @@ import io.apicurio.registry.resolver.DefaultSchemaResolver;
 import io.apicurio.registry.resolver.SchemaResolver;
 import io.apicurio.registry.resolver.strategy.ArtifactReference;
 import io.apicurio.schema.validation.avro.AvroSchemaParser;
-import io.apicurio.schema.validation.avro.AvroValidationResult;
 import io.apicurio.schema.validation.avro.AvroValidator;
 
-import io.kroxylicious.filter.validation.config.SchemaValidationConfig.WireFormatVersion;
 import io.kroxylicious.filter.validation.validators.Result;
 
 /**
@@ -42,8 +40,8 @@ class AvroSchemaBytebufValidator extends AbstractSchemaBytebufValidator {
     private final AvroValidator avroValidator;
     private final Schema avroSchema;
 
-    AvroSchemaBytebufValidator(Map<String, Object> schemaResolverConfig, Long schemaId, WireFormatVersion wireFormatVersion) {
-        super(schemaId, wireFormatVersion);
+    AvroSchemaBytebufValidator(Map<String, Object> schemaResolverConfig, Long schemaId) {
+        super(schemaId);
         this.avroValidator = new AvroValidator(schemaResolverConfig, Optional.of(ArtifactReference.fromContentId(schemaId)));
         this.avroSchema = resolveAvroSchema(schemaResolverConfig, schemaId);
     }
@@ -52,9 +50,7 @@ class AvroSchemaBytebufValidator extends AbstractSchemaBytebufValidator {
     protected CompletionStage<Result> doValidate(ByteBuffer buffer) {
         try {
             GenericRecord record = deserialize(buffer);
-            AvroValidationResult avroValidationResult = avroValidator.validateByArtifactReference(record);
-            return avroValidationResult.success() ? Result.VALID_RESULT_STAGE
-                    : CompletableFuture.completedFuture(new Result(false, avroValidationResult.toString()));
+            return toResult(avroValidator.validateByArtifactReference(record));
         }
         catch (IOException e) {
             return CompletableFuture.completedFuture(new Result(false, "Failed to deserialize Avro record: " + e.getMessage()));

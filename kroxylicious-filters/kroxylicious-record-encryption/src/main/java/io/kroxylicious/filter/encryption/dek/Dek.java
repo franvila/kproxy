@@ -171,11 +171,20 @@ public final class Dek<E> {
         }
     }
 
+    /**
+     * Returns whether the key has been destroyed.
+     * @return true if the key has been destroyed.
+     * @see <a href="#destruction">Destruction</a> in the class Javadoc.
+     */
     public boolean isDestroyed() {
         SecretKey secretKey = atomicKey.get();
         return secretKey == null || secretKey.isDestroyed();
     }
 
+    /**
+     * Returns the encrypted DEK.
+     * @return the encrypted DEK.
+     */
     public E edek() {
         return edek;
     }
@@ -204,7 +213,8 @@ public final class Dek<E> {
         }
 
         /**
-         * @return The encrypted DEK
+         * Returns the encrypted DEK.
+         * @return the encrypted DEK.
          */
         public @NonNull E edek() {
             return Dek.this.edek();
@@ -307,6 +317,10 @@ public final class Dek<E> {
             }
         }
 
+        /**
+         * Returns the manager for the cipher supported by this encryptor.
+         * @return the manager for the cipher supported by this encryptor.
+         */
         public @NonNull CipherManager cipherManager() {
             return cipherManager;
         }

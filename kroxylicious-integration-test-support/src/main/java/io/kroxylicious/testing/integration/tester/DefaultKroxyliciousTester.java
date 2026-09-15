@@ -48,12 +48,16 @@ import io.kroxylicious.proxy.internal.config.Features;
 import io.kroxylicious.proxy.reload.ReconfigureResult;
 import io.kroxylicious.testing.integration.client.KafkaClient;
 
-import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.Nullable;
 import info.schnatterer.mobynamesgenerator.MobyNamesGenerator;
 
 import static io.kroxylicious.testing.integration.tester.KroxyliciousConfigUtils.DEFAULT_GATEWAY_NAME;
 
+/**
+ * Default implementation of {@link KroxyliciousTester}. Runs a Kroxylicious server
+ * from a given configuration and manages the lifecycle of the Kafka clients handed
+ * out to tests.
+ */
 public class DefaultKroxyliciousTester implements KroxyliciousTester {
     private AutoCloseable proxy;
 
@@ -72,12 +76,19 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
     private final ClientFactory clientFactory;
 
     private final List<Closeable> closeables = new ArrayList<>();
+    private final AtomicReference<Throwable> proxyDeathCause = new AtomicReference<>();
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultKroxyliciousTester.class);
 
     DefaultKroxyliciousTester(ConfigurationBuilder configurationBuilder, Function<Configuration, AutoCloseable> kroxyliciousFactory, ClientFactory clientFactory,
                               @Nullable KroxyliciousTesterBuilder.TrustStoreConfiguration trustStoreConfiguration) {
         this.kroxyliciousConfig = new AtomicReference<>(configurationBuilder.build());
         this.proxy = kroxyliciousFactory.apply(kroxyliciousConfig.get());
+        // Death detection only applies when the factory produces a real KafkaProxy.
+        // startup() was already called by the factory; this second idempotent call retrieves
+        // the same shutdown future since the factory interface does not expose it directly.
+        if (this.proxy instanceof KafkaProxy kp) {
+            registerDeathCallback(kp.startup());
+        }
         this.trustStoreConfiguration = Optional.ofNullable(trustStoreConfiguration);
         this.clients = new ConcurrentHashMap<>();
         this.clientFactory = clientFactory;
@@ -112,7 +123,6 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
                 k -> clientFactory.build(key, buildDefaultClientConfiguration(virtualCluster, gateway)));
     }
 
-    @NonNull
     private Map<String, Object> buildDefaultClientConfiguration(String virtualCluster, String gateway) {
         Map<String, Object> defaultClientConfig = new HashMap<>();
         defaultClientConfig.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, getBootstrapAddress(virtualCluster, gateway));
@@ -121,14 +131,15 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
     }
 
     @Override
-    @NonNull
     public String getBootstrapAddress() {
         return getBootstrapAddress(onlyVirtualCluster(), DEFAULT_GATEWAY_NAME);
     }
 
     @Override
-    @NonNull
     public String getBootstrapAddress(String virtualCluster, String gateway) {
+        if (proxy instanceof KafkaProxy kp) {
+            return kp.getBootstrapAddress(virtualCluster, gateway).toString();
+        }
         return KroxyliciousConfigUtils.bootstrapServersFor(virtualCluster, kroxyliciousConfig.get(), gateway);
     }
 
@@ -302,9 +313,37 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
 
     @Override
     public void restartProxy() {
+        boolean hasOsAssignedPort = kroxyliciousConfig.get().virtualClusters().stream()
+                .flatMap(vc -> vc.gateways().stream().map(g -> g.buildNodeIdentificationStrategy(vc.name())))
+                .anyMatch(s -> s.getClusterBootstrapAddress().port() == 0);
+        if (hasOsAssignedPort) {
+            throw new IllegalStateException(
+                    "Cannot restart a proxy that uses OS-assigned (port 0) bootstrap ports: the restarted " +
+                            "proxy will bind to a different ephemeral port and existing clients will be unable to " +
+                            "reconnect. Use fixed ports in the gateway configuration when restartProxy() is needed.");
+        }
         try {
+            proxyDeathCause.set(null); // reset before closing so the old proxy's death is not attributed to the new one
             proxy.close();
-            proxy = spawnProxy(kroxyliciousConfig.get(), Features.defaultFeatures());
+            var started = createAndStart(kroxyliciousConfig.get(), Features.defaultFeatures());
+            proxy = started.proxy();
+            registerDeathCallback(started.startupFuture());
+        }
+        catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Override
+    public void restartProxy(ConfigurationBuilder configForRestart) {
+        try {
+            var config = configForRestart.build();
+            proxyDeathCause.set(null); // reset before closing so the old proxy's death is not attributed to the new one
+            proxy.close();
+            var started = createAndStart(config, Features.defaultFeatures());
+            proxy = started.proxy();
+            registerDeathCallback(started.startupFuture());
+            kroxyliciousConfig.set(config);
         }
         catch (Exception e) {
             throw new IllegalStateException(e);
@@ -328,6 +367,27 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
     }
 
     @Override
+    public void closeClientsFor(String virtualCluster) {
+        var exceptions = new ArrayList<Exception>();
+        clients.entrySet().removeIf(e -> {
+            if (e.getKey().virtualCluster().equals(virtualCluster)) {
+                closeCloseable(e.getValue()).ifPresent(exceptions::add);
+                return true;
+            }
+            return false;
+        });
+        if (!exceptions.isEmpty()) {
+            // Log each close-failure (so a stuck client doesn't hide behind the rest) and
+            // surface the first as the test-visible failure. Matches the close() pattern.
+            exceptions.forEach(ex -> LOGGER.error(ex.getMessage(), ex));
+            throw new IllegalStateException(
+                    "%d client(s) failed to close cleanly. First client close chained, others have been logged at ERROR"
+                            .formatted(exceptions.size()),
+                    exceptions.get(0));
+        }
+    }
+
+    @Override
     public void close() {
         try {
             List<Exception> exceptions = new ArrayList<>();
@@ -336,6 +396,10 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
             }
             closeables.forEach(c -> closeCloseable(c).ifPresent(exceptions::add));
             proxy.close();
+            Throwable death = proxyDeathCause.get();
+            if (death != null) {
+                exceptions.add(new IllegalStateException("Proxy died unexpectedly during test", death));
+            }
             if (!exceptions.isEmpty()) {
                 // if we encountered any exceptions while closing, log them all and then throw whichever one came first.
                 exceptions.forEach(e -> LOGGER.error(e.getMessage(), e));
@@ -357,10 +421,29 @@ public class DefaultKroxyliciousTester implements KroxyliciousTester {
         }
     }
 
+    private record StartedProxy(KafkaProxy proxy, CompletableFuture<Void> startupFuture) {}
+
+    private static StartedProxy createAndStart(Configuration config, Features features) {
+        KafkaProxy proxy = new KafkaProxy(new ServiceBasedPluginFactoryRegistry(), config, features);
+        return new StartedProxy(proxy, proxy.startup());
+    }
+
     static KafkaProxy spawnProxy(Configuration config, Features features) {
-        KafkaProxy kafkaProxy = new KafkaProxy(new ServiceBasedPluginFactoryRegistry(), config, features);
-        kafkaProxy.startup();
-        return kafkaProxy;
+        return createAndStart(config, features).proxy();
+    }
+
+    // FutureReturnValueIgnored: the whenComplete callback both logs at ERROR and stores the
+    // cause in proxyDeathCause; the derived stage carries no additional information.
+    @SuppressWarnings("FutureReturnValueIgnored")
+    private void registerDeathCallback(CompletableFuture<Void> startupFuture) {
+        startupFuture.whenComplete((v, t) -> {
+            if (t != null) {
+                LOGGER.atError()
+                        .setCause(t)
+                        .log("Proxy startup or shutdown completed exceptionally during test");
+                proxyDeathCause.compareAndSet(null, t);
+            }
+        });
     }
 
     @Override

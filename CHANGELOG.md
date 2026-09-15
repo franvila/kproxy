@@ -1,17 +1,154 @@
 # CHANGELOG
 
-This changelog enumerates **all user-facing** changes made to Kroxylicious, in reverse chronological order.
+This changelog enumerates **all user-facing** changes made to Kroxylicious.
 For changes that effect a public API, the [deprecation policy](./DEV_GUIDE.md#deprecation-policy) is followed.
 
 Format `<github issue/pr number>: <short description>`.
 
-## SNAPSHOT
+## 0.24.0
 
+* [#1121](https://github.com/kroxylicious/kroxylicious/issues/1121): feat(filters): add ProtocolLogger filter for wire-level request/response tracing
+* [#4156](https://github.com/kroxylicious/kroxylicious/issues/4156): feat(runtime): **Preview** — per-route filter chains
+* [#4465](https://github.com/kroxylicious/kroxylicious/pull/4465): Adding OCI annotations to the published images
+* [#4157](https://github.com/kroxylicious/kroxylicious/issues/4157): feat(runtime): **Preview** — nested router dispatch
+* [#4515](https://github.com/kroxylicious/kroxylicious/issues/4515): feat(runtime): add per-mechanism authentication outcome metrics
+* [#4516](https://github.com/kroxylicious/kroxylicious/issues/4516): feat(scram-credential-store): add SCRAM credential store SPI
+* [#4519](https://github.com/kroxylicious/kroxylicious/issues/4519): feat(sasl-termination): add SASL termination filter with OAUTHBEARER
+* [#4683](https://github.com/kroxylicious/kroxylicious/pull/4683): feat(sasl-termination): add SCRAM-SHA-256 and SCRAM-SHA-512 mechanism support
+* [#4778](https://github.com/kroxylicious/kroxylicious/issues/4778): feat(kafka-message-json): add JSON converters for vendored kafka message classes
+* [#4468](https://github.com/kroxylicious/kroxylicious/issues/4468): build(release): stop publishing dist artefacts to Maven Central
+* [#4469](https://github.com/kroxylicious/kroxylicious/issues/4469): build(release): stop publishing operator/admission jars to Maven Central
+* [#4756](https://github.com/kroxylicious/kroxylicious/issues/4756): feat(api): express short-circuit error responses in terms of Errors codes
+* [#4801](https://github.com/kroxylicious/kroxylicious/pull/4801): feat(kroxylicious-api)!: Filter and Router API migrated to io.kroxylicious Kafka protocol classes
+* [#3783](https://github.com/kroxylicious/kroxylicious/issues/3783): fix(config): remove deprecated `shutdownQuietPeriodSeconds` field from `NettySettings`.
+* [#3784](https://github.com/kroxylicious/kroxylicious/issues/3784): fix(aws-kms): remove deprecated top-level credential fields
+* [#3895](https://github.com/kroxylicious/kroxylicious/issues/3895): ci(release): remove legacy `quay.io/kroxylicious/kroxylicious` image push
+* [#4494](https://github.com/kroxylicious/kroxylicious/issues/4494): refactor(api): remove deprecated four-argument filter methods
+* [#4744](https://github.com/kroxylicious/kroxylicious/issues/4744): feat(record-validation): remove redundant `wireFormatVersion` configuration option.
+* [#3759](https://github.com/kroxylicious/kroxylicious/issues/3759): fix(authorization): use client-negotiated version for internal metadata request
+* [#4150](https://github.com/kroxylicious/kroxylicious/issues/4150): fix(kms): HashiCorp Vault resolveAlias now returns a versioned key reference so KEK rotations are picked up within the alias cache refresh period
+* [#4464](https://github.com/kroxylicious/kroxylicious/issues/4464): fix(kms): apply missing HTTP request timeouts and standardize KMS provider timeouts to 20s
+* [#4669](https://github.com/kroxylicious/kroxylicious/issues/4669): fix(filters): make ProtocolLogger filter resilient to formatting exceptions
+* [#4833](https://github.com/kroxylicious/kroxylicious/pull/4833): bump micrometer to v1.17.1 ([CVE-2026-59295](https://www.cve.org/CVERecord?id=CVE-2026-59295))
+* [#1121](https://github.com/kroxylicious/kroxylicious/issues/1121): refactor(build): extract KafkaApiMessageConverter into standalone kroxylicious-kafka-message-json module
+
+### Changes, deprecations and removals
+
+* [#4156](https://github.com/kroxylicious/kroxylicious/issues/4156): Routes in `routerDefinitions` can now declare their own `filters` list;
+  these filters apply only to traffic on that route, executing after virtual-cluster-level filters.
+  Route filter definition changes are detected during hot reload.
+* [#4157](https://github.com/kroxylicious/kroxylicious/issues/4157): Routes in `routerDefinitions` can now target other routers, forming a DAG
+  of routing decisions. The client sees a single consistent virtual
+  cluster topology. The routing preview feature flag
+  (`KROXYLICIOUS_UNLOCK_ROUTING=true`) is still required.
+  * **Breaking change for existing preview configurations:** Both router names and route
+    names are now validated against the pattern
+    `[a-z0-9A-Z](?:[a-z0-9A-Z_.-]{0,251}[a-z0-9A-Z])?` — names must start and end
+    with an alphanumeric character and may only contain alphanumerics, hyphens, dots,
+    and underscores internally. Configurations using names outside this pattern will
+    fail at startup with an `IllegalArgumentException`.
+* [#4468](https://github.com/kroxylicious/kroxylicious/issues/4468): `kroxylicious-app` (fat jar, `-bin.zip`, `-bin.tar.gz`), `kroxylicious-operator-dist`, and
+  `kroxylicious-admission-dist` (zip, tar.gz) are no longer published to Maven Central. We do not expect these artefacts to be consumed as Maven dependencies, please raise an issue if this affects you. We continue to publish them via GitHub Releases.
+* [#4469](https://github.com/kroxylicious/kroxylicious/issues/4469): `kroxylicious-operator` and `kroxylicious-admission` are no longer published to Maven Central.
+  We do not expect these artefacts to be consumed as Maven dependencies, please raise an issue if
+  this affects you. We continue to publish container images to quay.io and distribution tarballs
+  via GitHub Releases.
+* [#4756](https://github.com/kroxylicious/kroxylicious/issues/4756): `RequestFilterResultBuilder.errorResponse` and `RouterContext.respondWithError` now take an
+  `org.apache.kafka.common.protocol.Errors` code (with an optional message) instead of a client
+  exception, so the kafka-clients exception hierarchy no longer leaks into the API.
+  * The exception-based overloads (`errorResponse(RequestHeaderData, ApiMessage, ApiException)` and
+    `respondWithError(RequestHeaderData, ApiMessage, ApiException)`) have been removed. Migrate to the
+    `Errors`-based overloads, e.g. replace `errorResponse(header, request, new InvalidRequestException(msg))`
+    with `errorResponse(header, request, Errors.INVALID_REQUEST, msg)`.
+  * `MockFilterContextAssert.errorResponse()` no longer returns a `ThrowableAssert<ApiException>`.
+    It now returns a `MockErrorResponseAssert` exposing `hasError(Errors)` and `hasMessage(String)`,
+    so the kafka-clients exception hierarchy no longer leaks into the test-support API. Migrate
+    assertions such as `.errorResponse().isInstanceOf(InvalidRecordException.class).hasMessage(msg)`
+    to `.errorResponse().hasError(Errors.INVALID_RECORD).hasMessage(msg)`.
+  * An undocumented behaviour in the Filter API has been removed. Previously if a request filter
+    returned an exceptionally completed future, we would use that exception type to determine which
+    error code to set on the response. We are removing all integration with the kafka exception
+    hierarchy so now any exceptionally completed request futures will result in an UNKNOWN_SERVER_ERROR
+    response to the client. Filters that want specialized error responses should use the `errorResponse`
+    APIs on `FilterContext#requestFilterResultBuilder`.
+  * `TopicNameMappingException(Errors)` and `TopicNameMappingException(Errors, String)` constructors no
+    longer set the exception cause to `Errors.exception()`. Filters that relied on
+    `TopicNameMappingException.getCause()` returning the corresponding kafka-clients `ApiException` will
+    now see a `null` cause. This removes a dependency on the kafka-clients `Errors.exception()` wrapper
+    API ahead of the move to the vendored `Errors` enum. Use the
+    `TopicNameMappingException(Errors, String, Throwable)` constructor if you need to supply a cause, or
+    `getError()` to obtain the underlying `Errors`.
+* [#4801](https://github.com/kroxylicious/kroxylicious/pull/4801): BREAKING CHANGE: All filter and router implementations must be updated.
+  The Filter and Router APIs now use io.kroxylicious.kafka.* protocol data classes
+  instead of org.apache.kafka.* types sourced from kafka-clients.
+  Every implementation that handles Kafka request or response types will require
+  import updates at minimum. A migration guide is available in the documentation.
+  An OpenRewrite recipe covering the mechanical parts of this migration is
+  provided, see kroxylicious-proxy-core/kroxylicious-migrations/README.md.
+* [#3783](https://github.com/kroxylicious/kroxylicious/issues/3783): The `shutdownQuietPeriodSeconds` field under `network.proxy` and `network.management` is removed.
+  Use the new `shutdownQuietPeriod` field instead, which accepts Go-style durations (e.g. `"2s"`, `"500ms"`) and adds support for sub-second precision.
+  A new `shutdownTimeout` field is also available to configure the previously hardcoded 15-second Netty shutdown timeout.
+* [#3784](https://github.com/kroxylicious/kroxylicious/issues/3784): The deprecated top-level `longTermCredentials` and `ec2MetadataCredentials` fields are removed from AWS KMS configuration.
+  Configure these providers under `credentials.longTerm` or `credentials.ec2Metadata` instead.
+* [#3895](https://github.com/kroxylicious/kroxylicious/issues/3895): The deprecated `quay.io/kroxylicious/kroxylicious` proxy container image is no longer published.
+  Use `quay.io/kroxylicious/proxy` instead.
+* [#4494](https://github.com/kroxylicious/kroxylicious/issues/4494): The four-argument `RequestFilter.onRequest` and `ResponseFilter.onResponse` methods have been removed.
+  Filter implementations must use the five-argument variants that include the API version.
+* [#4744](https://github.com/kroxylicious/kroxylicious/issues/4744): The record validation filter's `schemaValidationConfig.wireFormatVersion` option is removed — the
+  filter now supports only the Apicurio Registry v3 wire format (Confluent-compatible 4-byte content
+  IDs), so `V3` was the only legal value and the option was no longer read. Any configuration that
+  still sets `wireFormatVersion` must delete the line, or it will fail to load. Users migrating from
+  the older `V2` format must additionally update `apicurioId` to reference the schema's `contentId`
+  (instead of `globalId`) and ensure Kafka clients embed the 4-byte `contentId` in record
+  headers/magic bytes — see the Apicurio Registry v2 to v3 migration guide for details.
+
+## 0.23.0
+
+* [#4307](https://github.com/kroxylicious/kroxylicious/pull/4307): feat(routing): **Preview** — dynamic routing API. Implement `RouterFactory` to dispatch requests to multiple upstream clusters based on request content, with fan-out via `RouterContext.sendRequest()` and in-order response delivery. Wire routers into virtual clusters via the new top-level `routerDefinitions` configuration. Router and cluster definitions are hot-reload compatible ([#4242](https://github.com/kroxylicious/kroxylicious/pull/4242)). Enable with `KROXYLICIOUS_UNLOCK_ROUTING=true` (see Changes section below).
+* [#4309](https://github.com/kroxylicious/kroxylicious/pull/4309): fix(runtime): channels that had not yet reached the Forwarding state were leaked when a virtual cluster drained on shutdown.
+* [#4324](https://github.com/kroxylicious/kroxylicious/pull/4324): fix(runtime): outbound connections are now correctly closed when the channel is already inactive at close time.
+* [#4118](https://github.com/kroxylicious/kroxylicious/issues/4118): feat(kms): CipherTrust Manager `userCredentials` now supports an optional `domain` field. When set, the password-grant token request is scoped to that domain, enabling multi-tenant CipherTrust deployments.
+* [#4384](https://github.com/kroxylicious/kroxylicious/pull/4384): bump io.kiota:kiota-http-jdk from 0.0.36 to 0.0.37 (for CVE-2026-45292 fix in opentelemetry)
+* [#4342](https://github.com/kroxylicious/kroxylicious/pull/4342): build(deps): bump com.fasterxml.jackson:jackson-bom from 2.22.0 to 2.22.1
+* [#4337](https://github.com/kroxylicious/kroxylicious/pull/4337): build(deps): bump netty.version from 4.2.15.Final to 4.2.16.Final
+* [#4345](https://github.com/kroxylicious/kroxylicious/pull/4345): feat(operator): expose JOSDK periodic reconciliation interval for configuration
+* [#4196](https://github.com/kroxylicious/kroxylicious/pull/4196): build(deps): bump apicurio-schema-validation from 0.1.4 to 3.3.0, version aligning with the rest of the component.
+* [#933](https://github.com/kroxylicious/kroxylicious/issues/933): feat(pem-support): Support PEM format key material in the KMS integrations.
+* [#3970](https://github.com/kroxylicious/kroxylicious/issues/3970): feat(operator): allow `KafkaService.spec.strimziKafkaRef.namespace` to reference Strimzi `Kafka` clusters in watched namespaces other than the `KafkaService` namespace
+
+### Changes, deprecations and removals
+
+* [#4307](https://github.com/kroxylicious/kroxylicious/pull/4307): **Preview feature** — the runtime now supports a single Router per Virtual Cluster configured via `routerDefinitions` and `virtualCluster.target.router`, note that we do not yet offer any Router implementation, so this is only relevant if you are development your own `Router`. Set `KROXYLICIOUS_UNLOCK_ROUTING=true` environment variable to opt in. A warning is emitted at proxy startup when the feature is active.
+* [#4290](https://github.com/kroxylicious/kroxylicious/pull/4290): BouncyCastle is no longer a production dependency of the proxy. It was an inadvertent transitive dependency and is now test-scope only. Plugins or deployments that relied on BouncyCastle being present on the proxy classpath at runtime must add it explicitly.
+
+## 0.22.0
+
+* [#4152](https://github.com/kroxylicious/kroxylicious/pull/4152): feat(config): add `clusterDefinitions` top-level configuration property. Named cluster definitions can be defined once and referenced from virtual clusters via `target: { cluster: "<name>" }`, replacing the inline `targetCluster` field.
+* [#3672](https://github.com/kroxylicious/kroxylicious/pull/3672): feat(operator): add `KafkaProxyIngress.spec.infrastructure.annotations` to allow operators to propagate custom annotations to operator-managed Services and Routes, supporting platform-specific tooling such as AWS Load Balancer Controller, OpenShift service-serving-certificate, and HAProxy configuration.
+* [#4125](https://github.com/kroxylicious/kroxylicious/pull/4125): feat(runtime): add virtual cluster lifecycle and reconfiguration metrics — `kroxylicious_virtual_cluster_state` (StateSet), `kroxylicious_virtual_cluster_state_duration_seconds`, `kroxylicious_virtual_cluster_transitions_total`, `kroxylicious_reconfigure_total`, and `kroxylicious_reconfigure_duration_seconds` — for monitoring hot-reload operations.
+* [#4182](https://github.com/kroxylicious/kroxylicious/pull/4182): build(deps): Add client certificate authentication to Thales CipherTrust Manager KMS
+* [#4144](https://github.com/kroxylicious/kroxylicious/pull/4144): build(deps): bump io.prometheus:prometheus-metrics-bom from 1.6.1 to 1.8.0
+* [#4142](https://github.com/kroxylicious/kroxylicious/pull/4142): build(deps): bump io.javaoperatorsdk:operator-framework-bom from 5.2.5 to 5.4.0
+* [#4207](https://github.com/kroxylicious/kroxylicious/pull/4207): build(deps): [record-validation] bump io.kiota:kiota-http-jdk from 0.0.35 to 0.0.36
+* [#4197](https://github.com/kroxylicious/kroxylicious/pull/4197): build(deps-dev): bump com.google.protobuf:protobuf-java from 4.35.0 to 4.35.1
+* [#4193](https://github.com/kroxylicious/kroxylicious/pull/4193): build(deps): bump com.github.ben-manes.caffeine:caffeine from 3.2.3 to 3.2.4
+* [#3146](https://github.com/kroxylicious/kroxylicious/issues/3146): feat(record-encryption): CipherTrust Manager KMS plugin for Record Encryption (username/password auth only).
+* [#4141](https://github.com/kroxylicious/kroxylicious/pull/4141): build(deps): bump org.apache.logging.log4j:log4j-bom from 2.25.4 to 2.26.0
+* [#4102](https://github.com/kroxylicious/kroxylicious/pull/4102): build(deps): bump apicurio-registry.version from 3.2.4 to 3.3.0
+* [#4059](https://github.com/kroxylicious/kroxylicious/pull/4059): build(deps): bump com.fasterxml.jackson:jackson-bom from 2.21.3 to 2.22.0
+* [#4073](https://github.com/kroxylicious/kroxylicious/pull/4073): refactor(runtime): move `FilterChainFactory` from a proxy-wide shared component to per-virtual-cluster ownership. Each virtual cluster now owns its filter chain — `FilterFactory.initialize()`/`close()` lifecycles are scoped per virtual cluster, with independent initialization data and configuration. This isolates filter resources between virtual clusters and enables safe hot-reload of filter chains (a virtual cluster's chain can be reconfigured without affecting other virtual clusters' filters). `FilterFactory.initialize()` and `close()` are now guaranteed to run on a non-Netty-event-loop thread, so blocking work (e.g. closing KMS/HTTP clients) is safe in either method
+* [#4070](https://github.com/kroxylicious/kroxylicious/pull/4070): fix(operator): KafkaService secondary→primary mappers no longer call the API server on every secondary event, preventing KafkaService from getting stuck when the API server is transiently unavailable
+* [#4064](https://github.com/kroxylicious/kroxylicious/pull/4064): fix(operator): VirtualKafkaCluster secondary→primary mappers no longer call the API server on every secondary event, preventing VKCs from getting stuck when the API server is transiently unavailable (follow-up to [#4044](https://github.com/kroxylicious/kroxylicious/pull/4044) by @Roshr2211)
+* [#4017](https://github.com/kroxylicious/kroxylicious/issues/4017): fix(operator): `KafkaProxy` secondary→primary mappers no longer call the API server on every secondary event, preventing `KafkaProxy` from getting stuck when the API server is transiently unavailable
 * [#3913](https://github.com/kroxylicious/kroxylicious/pull/3913): feat(operator): report `DeprecationWarning` status condition on `KafkaProxy` resources with absent `spec`
 
 ### Changes, deprecations and removals
 
+* [#4203](https://github.com/kroxylicious/kroxylicious/pull/4203): Java 17 support has been removed. Kroxylicious now requires Java 21 as the minimum runtime. Kroxylicious is tested on Java 21 and Java 25.
+* [#4073](https://github.com/kroxylicious/kroxylicious/pull/4073): **Behaviour change for plugin authors** — `FilterChainFactory` is now scoped per virtual cluster rather than shared across the whole proxy. A filter type used by N virtual clusters now sees N independent `FilterFactory.initialize()`/`close()` lifecycles — one per virtual cluster, each with its own initialization data. The threading model is also tightened: `close()` is now invoked on a non-Netty-event-loop thread (previously on the proxy shutdown caller's thread) after all connections to the virtual cluster have drained, so blocking work (e.g. closing KMS/HTTP clients) is safe in `close()`. Plugins that maintained cross-virtual-cluster state in a single `FilterFactory` instance, or relied on `close()` running on a specific thread, should be reviewed.
 * [#3913](https://github.com/kroxylicious/kroxylicious/pull/3913): The operator now sets a `DeprecationWarning` status condition on `KafkaProxy` resources that have no `spec` field, complementing the existing log warning. Users should add an empty `spec: {}` to any `KafkaProxy` resource that lacks one. Support for spec-less `KafkaProxy` resources will be removed in a future release.
+* [#4152](https://github.com/kroxylicious/kroxylicious/pull/4152): The `targetCluster` field on virtual clusters is deprecated. Define the target cluster under the new top-level `clusterDefinitions` list and reference it with `target: { cluster: "<name>" }`. The old field continues to work but will be removed in a future release.
+* [#3828](https://github.com/kroxylicious/kroxylicious/pull/3828): remove `KafkaProxy.block()` — use `startup().join()` instead. KafkaProxy is considered internal API hence we are skipping the deprecation cycle
 
 ## 0.21.0
 

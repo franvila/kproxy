@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Operator versions (override via environment variables)
 STRIMZI_VERSION="${STRIMZI_VERSION:-latest}"
-KROXYLICIOUS_VERSION="${KROXYLICIOUS_VERSION:-0.22.0-SNAPSHOT}"
+KROXYLICIOUS_VERSION="${KROXYLICIOUS_VERSION:-0.25.0-SNAPSHOT}"
 
 NAMESPACE="${NAMESPACE:-kafka}"
 KROXYLICIOUS_OPERATOR_NAMESPACE="kroxylicious-operator"
@@ -40,7 +40,7 @@ Options:
 Environment:
   NAMESPACE                     Kafka namespace (default: kafka)
   STRIMZI_VERSION               Strimzi version to install from GitHub releases (default: resolved from latest release)
-  KROXYLICIOUS_VERSION          Kroxylicious operator version to install (default: 0.22.0-SNAPSHOT)
+  KROXYLICIOUS_VERSION          Kroxylicious operator version to install (default: ${KROXYLICIOUS_VERSION})
 
 Examples:
   # Full setup (baseline + proxy scenarios)

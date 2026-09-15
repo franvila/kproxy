@@ -52,21 +52,29 @@ public abstract class BaseOauthBearerIT extends BaseIT {
     private static final URI OAUTH_ENDPOINT_URL = URI.create(JWKS_ENDPOINT_URL).resolve("/");
     protected static final URI TOKEN_ENDPOINT_URL = OAUTH_ENDPOINT_URL.resolve("default/token");
     protected static final String EXPECTED_AUDIENCE = "default";
+    protected static final String EXPECTED_ISSUER = "http://localhost:" + OAUTH_SERVER_PORT + "/default";
+
+    protected static final String JWKS_ENDPOINT_URL_OTHER_ISSUER = "http://localhost:" + OAUTH_SERVER_PORT + "/other-issuer/jwks";
+    protected static final URI TOKEN_ENDPOINT_URL_OTHER_ISSUER = OAUTH_ENDPOINT_URL.resolve("other-issuer/token");
     protected static final String ALLOWED_SASL_OAUTHBEARER_URLS_CONFIG = "org.apache.kafka.sasl.oauthbearer.allowed.urls";
     protected static final String CLIENT_ID = "clientId-" + UUID.randomUUID();
     protected static final String CLIENT_SECRET = "clientSecret";
 
     // mock-oauth2-server is not uploaded to docker hub, so setting the digest doesn't work when looking for the image on docker hub.
     // When this issue https://github.com/testcontainers/testcontainers-java/issues/10527 is fixed, we can use the digest here.
-    private static final DockerImageName DOCKER_IMAGE_NAME = DockerImageName.parse("ghcr.io/navikt/mock-oauth2-server:4.0.0");
+    private static final DockerImageName DOCKER_IMAGE_NAME = DockerImageName.parse("ghcr.io/navikt/mock-oauth2-server:5.0.2");
     private static OauthServerContainer oauthServer;
 
     @BeforeAll
     static void beforeAll() {
-        // Kafka 4.0 requires that the org.apache.kafka.sasl.oauthbearer.allowed.urls sys property is set in order to use Oauth Bearer.
-        // The Kafka Broker and Proxy requires that JWKS_ENDPOINT_URL is in the allow list.
-        // The Kafka Client requires that TOKEN_ENDPOINT_URL is in the allow list.
-        System.setProperty(ALLOWED_SASL_OAUTHBEARER_URLS_CONFIG, JWKS_ENDPOINT_URL + "," + TOKEN_ENDPOINT_URL);
+        // Kafka 4.0 validates OAUTHBEARER URLs against the org.apache.kafka.sasl.oauthbearer.allowed.urls
+        // system property. The proxy's production code manages this property for its own JWKS URLs, but
+        // the in-VM test broker shares the same JVM and also needs the JWKS URLs in the allowed list.
+        // We pre-populate both JWKS and token endpoint URLs here for the broker and client respectively.
+        // SaslTerminationOauthBearerIT strips the JWKS URLs so it can verify that the production code adds them.
+        System.setProperty(ALLOWED_SASL_OAUTHBEARER_URLS_CONFIG,
+                JWKS_ENDPOINT_URL + "," + TOKEN_ENDPOINT_URL + ","
+                        + JWKS_ENDPOINT_URL_OTHER_ISSUER + "," + TOKEN_ENDPOINT_URL_OTHER_ISSUER);
 
         oauthServer = new OauthServerContainer(BaseOauthBearerIT.DOCKER_IMAGE_NAME);
         oauthServer.setWaitStrategy(new LogMessageWaitStrategy().withRegEx(".*started server on address.*"));

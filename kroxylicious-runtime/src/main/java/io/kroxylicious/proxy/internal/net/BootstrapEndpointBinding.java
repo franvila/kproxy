@@ -8,6 +8,7 @@ package io.kroxylicious.proxy.internal.net;
 
 import java.util.Objects;
 
+import io.kroxylicious.proxy.internal.routing.DirectRouting;
 import io.kroxylicious.proxy.service.HostPort;
 
 import edu.umd.cs.findbugs.annotations.Nullable;
@@ -19,13 +20,21 @@ import edu.umd.cs.findbugs.annotations.Nullable;
  */
 public record BootstrapEndpointBinding(EndpointGateway endpointGateway) implements EndpointBinding {
 
+    /**
+     * Creates a bootstrap binding.
+     *
+     * @param endpointGateway the endpoint gateway
+     */
     public BootstrapEndpointBinding {
         Objects.requireNonNull(endpointGateway, "endpointGateway cannot be null");
     }
 
     @Override
     public HostPort upstreamTarget() {
-        return endpointGateway().targetCluster().bootstrapServer();
+        if (!(endpointGateway().virtualCluster().routing() instanceof DirectRouting dr)) {
+            throw new IllegalStateException("BootstrapEndpointBinding only has an upstream target for direct-routing virtual clusters");
+        }
+        return dr.upstreamCluster().bootstrapServer();
     }
 
     @Nullable
