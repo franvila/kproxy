@@ -23,6 +23,7 @@ import io.kroxylicious.kafka.common.protocol.ApiKeys;
  */
 class ApiVersionMaxVersionLimiter implements ApiVersionsResponseTransformer {
 
+
     private static final Logger logger = LoggerFactory.getLogger(ApiVersionMaxVersionLimiter.class);
 
     private final Map<ApiKeys, Short> versionLimits;
