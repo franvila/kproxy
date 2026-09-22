@@ -26,7 +26,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SuppressWarnings("java:S3577") // ignoring naming convention for the test class
 class ConformanceDT {
 
-
     static Stream<Arguments> asciiDocFiles() {
         return Utils.asciiDocFilesMatching(f -> f.getFileName().toString().matches("(proc|con|assembly)-.*\\.adoc$"))
                 .map(Arguments::of);
