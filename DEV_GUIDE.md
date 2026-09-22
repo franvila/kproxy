@@ -11,7 +11,7 @@ This document gives a detailed breakdown of the various build processes and opti
 - [`mvn`](https://maven.apache.org/index.html) (version 3.8.8 and above) - [Apache Maven®](https://maven.apache.org)
 - [`docker`](https://docs.docker.com/install/) or [`podman`](https://podman.io/docs/installation) - Docker or Podman
 
-> :warning: **If you are using Podman please see [these notes](#running-integration-tests-on-podman) below**
+> :warning:  **If you are using Podman please see [these notes](#running-integration-tests-on-podman) below**
 
 If you are developing the **Kroxylicious Operator**, you'll need a Kubernetes environment. [minikube](https://minikube.sigs.k8s.io/docs/) is sufficient).
 
