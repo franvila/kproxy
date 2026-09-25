@@ -59,11 +59,11 @@ jobs:
               - '!kroxylicious-wire-fidelity-tests/**'
 
   build_artifacts:
-    needs: changes
+#    needs: changes
     uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
 
   set_variables:
-    needs: changes
+#    needs: changes
     runs-on: ubuntu-latest
     outputs:
       kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
