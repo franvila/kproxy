@@ -17,11 +17,7 @@
 name: Build Kroxylicious Artifacts
 
 on:
-  push:
-    branches: [ main, 'release/**' ]
-  pull_request:
-    types: [ opened, synchronize, reopened ]
-#  workflow_call:
+  workflow_call:
 
 jobs:
   build_kroxylicious_images:
