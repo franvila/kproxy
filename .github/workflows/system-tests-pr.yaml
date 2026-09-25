@@ -22,9 +22,6 @@ on:
     branches:
       - "main"
       - 'release/**'
-  workflow_run:
-    workflows: [ "Build Kroxylicious Artifacts" ]
-    types: [ completed ]
   workflow_dispatch:
 
 concurrency:
@@ -61,9 +58,9 @@ jobs:
               - '!kroxylicious-test-images/**'
               - '!kroxylicious-wire-fidelity-tests/**'
 
-#  build_artifacts:
+  build_artifacts:
 #    needs: changes
-#    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
+    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
 
   set_variables:
 #    needs: changes
@@ -103,7 +100,7 @@ jobs:
           echo "$KAFKA_CLIENT"
 
   run_system_tests:
-    needs: [changes,set_variables]
+    needs: [changes,build_artifacts,set_variables]
     uses: $/.github/workflows/run-system-tests.yaml
     secrets:
       KROXYLICIOUS_KMS_FORTANIX_ADMIN_API_KEY: ${{ secrets.KROXYLICIOUS_KMS_FORTANIX_ADMIN_API_KEY }}
