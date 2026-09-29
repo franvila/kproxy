@@ -72,7 +72,28 @@ jobs:
   build_artifacts:
     uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
 
-#  build_artifacts:
+  get_kroxylicious_image:
+    needs: build_artifacts
+    runs-on: ubuntu-latest
+    outputs:
+      kroxylicious_image: ${{ steps.get_kroxylicious_image.outputs.KROXYLICIOUS_IMAGE }}
+    steps:
+      - name: 'Check out repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: 'Get operand image'
+        id: build_image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          GIT_HASH="$(git rev-parse HEAD)"
+          KROXYLICIOUS_VERSION="$(mvn help:evaluate -Dexpression=project.version --quiet -DforceStdout)"
+          KROXYLICIOUS_IMAGE="quay.io/kroxylicious/proxy:${KROXYLICIOUS_VERSION}-${GIT_HASH}"
+
+          echo "KROXYLICIOUS_IMAGE=${KROXYLICIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
+
+  #  build_artifacts:
 #    needs: discover_integration_test_chunks
 #    runs-on: ubuntu-latest
 #    outputs:
@@ -133,7 +154,7 @@ jobs:
 #          path: /tmp/kroxylicious-artifacts/maven-repo.tar.gz
 #          retention-days: 1
   run_integration_tests:
-    needs: [build_artifacts,discover_integration_test_chunks]
+    needs: [build_artifacts,get_kroxylicious_image,discover_integration_test_chunks]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -220,7 +241,7 @@ jobs:
       - name: Load Operand Image in Minikube
         if: steps.check_k8s.outputs.needs_minikube == 'true'
         env:
-          KROXYLICIOUS_IMAGE: ${{ needs.build_artifacts.outputs.kroxylicious_image }}
+          KROXYLICIOUS_IMAGE: ${{ needs.get_kroxylicious_image.outputs.kroxylicious_image }}
         run: |
           # Load image into Minikube
           minikube image load /tmp/kroxylicious-operand/kroxylicious-proxy.img.tar.gz
