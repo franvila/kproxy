@@ -17,10 +17,15 @@
 name: "Run Kroxylicious Proxy Integration Tests"
 
 on:
-  push:
-    branches: [ main, 'release/**' ]
-  pull_request:
-    types: [ opened, synchronize, reopened ]
+#  push:
+#    branches: [ main, 'release/**' ]
+#  pull_request:
+#    types: [ opened, synchronize, reopened ]
+  workflow_run:
+    workflows:
+      - "Build Kroxylicious Artifacts"
+    types:
+      - completed
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -71,21 +76,9 @@ jobs:
           echo "Discovered $(echo "$TEST_CHUNKS" | jq -r 'length') test chunks"
 #  build_artifacts:
 #    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
-  build_artifacts:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Wait for build artifacts to succeed
-        uses: lewagon/wait-on-check-action@v1.9.1
-        with:
-          ref: ${{ github.event.pull_request.ref || github.ref }}
-          check-name: "Build Kroxylicious Artifacts"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-          checks-discovery-timeout: 300
-
 
   get_kroxylicious_image:
-    needs: build_artifacts
+#    needs: build_artifacts
     runs-on: ubuntu-latest
     outputs:
       kroxylicious_image: ${{ steps.get_kroxylicious_image.outputs.KROXYLICIOUS_IMAGE }}
@@ -166,7 +159,8 @@ jobs:
 #          path: /tmp/kroxylicious-artifacts/maven-repo.tar.gz
 #          retention-days: 1
   run_integration_tests:
-    needs: [build_artifacts,get_kroxylicious_image,discover_integration_test_chunks]
+#    needs: [build_artifacts,get_kroxylicious_image,discover_integration_test_chunks]
+    needs: [get_kroxylicious_image,discover_integration_test_chunks]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -309,7 +303,7 @@ jobs:
             ${EXTRA_PROPS} \
             verify
   integration_test_filter_archetype:
-    needs: build_artifacts
+#    needs: build_artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
