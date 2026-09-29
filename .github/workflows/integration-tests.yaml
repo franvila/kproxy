@@ -70,8 +70,8 @@ jobs:
           echo "Discovered modules: $MODULES"
           echo "Discovered $(echo "$TEST_CHUNKS" | jq -r 'length') test chunks"
   build_artifacts:
-    #    needs: changes
     uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
+
 #  build_artifacts:
 #    needs: discover_integration_test_chunks
 #    runs-on: ubuntu-latest
@@ -214,7 +214,7 @@ jobs:
         if: steps.check_k8s.outputs.needs_minikube == 'true'
         uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
-          name:  kroxylicious-operand-image
+          name:  kroxylicious-proxy
           path: /tmp/kroxylicious-operand
           run_id: ${{github.run_id}}
       - name: Load Operand Image in Minikube
