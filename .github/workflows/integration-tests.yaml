@@ -22,10 +22,8 @@ on:
 #  pull_request:
 #    types: [ opened, synchronize, reopened ]
   workflow_run:
-    workflows:
-      - "Build Kroxylicious Artifacts"
-    types:
-      - completed
+    workflows: ["Build Kroxylicious Artifacts"]
+    types: [completed]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -33,6 +31,7 @@ concurrency:
 
 jobs:
   discover_integration_test_chunks:
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       test_chunks: ${{ steps.discover.outputs.test_chunks }}
@@ -161,6 +160,7 @@ jobs:
   run_integration_tests:
 #    needs: [build_artifacts,get_kroxylicious_image,discover_integration_test_chunks]
     needs: [get_kroxylicious_image,discover_integration_test_chunks]
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
