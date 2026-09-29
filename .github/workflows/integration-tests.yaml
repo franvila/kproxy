@@ -81,6 +81,7 @@ jobs:
           check-name: "Build Kroxylicious Artifacts"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
+          checks-discovery-timeout: 300
 
 
   get_kroxylicious_image:
