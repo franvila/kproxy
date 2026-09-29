@@ -69,8 +69,19 @@ jobs:
           echo "modules=$MODULES" >> $GITHUB_OUTPUT
           echo "Discovered modules: $MODULES"
           echo "Discovered $(echo "$TEST_CHUNKS" | jq -r 'length') test chunks"
+#  build_artifacts:
+#    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
   build_artifacts:
-    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for build artifacts to succeed
+        uses: lewagon/wait-on-check-action@v1.9.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: "Build Kroxylicious Artifacts"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
 
   get_kroxylicious_image:
     needs: build_artifacts
