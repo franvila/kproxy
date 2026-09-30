@@ -28,7 +28,7 @@ on:
 #  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
@@ -42,10 +42,15 @@ jobs:
       systemtest: ${{ steps.filter.outputs.systemtest }}
     steps:
       # For pull requests it's not necessary to check out the code
+      - name: 'Check out repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
         id: filter
         with:
           predicate-quantifier: 'some-with-excludes'
+          ref: ${{ github.event.workflow_run.head_branch }}
           filters: |
             systemtest:
               - '.github/workflows/system-tests-pr.yaml'
