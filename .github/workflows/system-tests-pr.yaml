@@ -120,3 +120,4 @@ jobs:
       kafkaClient: ${{ needs.set_variables.outputs.kafka_client }}
       testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') }}
       skipSystemTestRun: ${{ needs.changes.outputs.systemtest == 'false' }}
+      runId: ${{ github.event.workflow_run.id }}
