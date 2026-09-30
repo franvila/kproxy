@@ -43,6 +43,11 @@ on:
         required: false
         default: 'false'
         type: string
+      runId:
+        description: "Run Id"
+        required: true
+        default: ''
+        type: string
   workflow_call:
     inputs: *workflow-inputs
     secrets:
@@ -108,22 +113,22 @@ jobs:
         with:
           name: kroxylicious-maven-artifacts
           path: /tmp/kroxylicious-artifacts
-          run_id: ${{github.run_id}}
+          run_id: ${{inputs.runId}}
       - name: Download kroxylicious proxy container artifact
         uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
           name: kroxylicious-proxy
-          run_id: ${{github.run_id}}
+          run_id: ${{inputs.runId}}
       - name: Download kroxylicious operator container artifact
         uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
           name: kroxylicious-operator
-          run_id: ${{github.run_id}}
+          run_id: ${{inputs.runId}}
       - name: Download kroxylicious admission-webhook container artifact
         uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
           name: kroxylicious-admission-webhook
-          run_id: ${{github.run_id}}
+          run_id: ${{inputs.runId}}
       - name: 'Extract Kroxylicious Maven artifacts'
         run: |
           mkdir -p "$HOME/.m2/repository"
