@@ -45,8 +45,8 @@ on:
         type: string
       runId:
         description: "Run Id"
-        required: false
-        default: ${{ github.run_id }}
+        required: true
+        default: ''
         type: string
   workflow_call:
     inputs: *workflow-inputs
