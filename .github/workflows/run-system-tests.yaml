@@ -46,7 +46,6 @@ on:
       runId:
         description: "Run Id"
         required: true
-        default: ''
         type: string
   workflow_call:
     inputs: *workflow-inputs
