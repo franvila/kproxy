@@ -17,17 +17,21 @@
 name: "Run Kroxylicious Proxy Integration Tests"
 
 on:
-  push:
-    branches: [ main, 'release/**' ]
-  pull_request:
-    types: [ opened, synchronize, reopened ]
+#  push:
+#    branches: [ main, 'release/**' ]
+#  pull_request:
+#    types: [ opened, synchronize, reopened ]
+  workflow_run:
+    workflows: ["Build Kroxylicious Artifacts"]
+    types: [completed]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
   discover_integration_test_chunks:
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       test_chunks: ${{ steps.discover.outputs.test_chunks }}
@@ -69,26 +73,20 @@ jobs:
           echo "modules=$MODULES" >> $GITHUB_OUTPUT
           echo "Discovered modules: $MODULES"
           echo "Discovered $(echo "$TEST_CHUNKS" | jq -r 'length') test chunks"
-  build_artifacts:
-    needs: discover_integration_test_chunks
+#  build_artifacts:
+#    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
+
+  get_kroxylicious_image:
+#    needs: build_artifacts
     runs-on: ubuntu-latest
     outputs:
-      kroxylicious_image: ${{ steps.build_image.outputs.KROXYLICIOUS_IMAGE }}
+      kroxylicious_image: ${{ steps.get_kroxylicious_image.outputs.KROXYLICIOUS_IMAGE }}
     steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
-        with:
-          egress-policy: audit
-
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      - name: Setup Java
-        uses: $/.github/actions/common/setup-java
-      - name: 'Cache Maven packages'
-        uses: $/.github/actions/common/cache-maven-packages
-      - name: 'Build Kroxylicious modules with integration tests and operand image'
+      - name: 'Get operand image'
         id: build_image
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,40 +95,72 @@ jobs:
           KROXYLICIOUS_VERSION="$(mvn help:evaluate -Dexpression=project.version --quiet -DforceStdout)"
           KROXYLICIOUS_IMAGE="quay.io/kroxylicious/proxy:${KROXYLICIOUS_VERSION}-${GIT_HASH}"
 
-          echo "Building modules: ${{ needs.discover_integration_test_chunks.outputs.modules }}"
-          echo "Building operand image: ${KROXYLICIOUS_IMAGE}"
-
-          mvn --batch-mode \
-            --activate-profiles 'dist,!qa' \
-            --projects ${{ needs.discover_integration_test_chunks.outputs.modules }} \
-            --also-make \
-            -DskipTests \
-            -Dmaven.javadoc.skip=true \
-            -DskipDocs=true \
-            -Derrorprone.skip=true \
-            -Dio.kroxylicious.proxy.image.name="${KROXYLICIOUS_IMAGE}" \
-            install
-
           echo "KROXYLICIOUS_IMAGE=${KROXYLICIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
-      - name: 'Upload Operand Image Artifact'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: kroxylicious-operand-image
-          path: kroxylicious-app/target/kroxylicious-proxy.img.tar.gz
-          retention-days: 1
-      - name: 'Package Kroxylicious Maven artifacts'
-        run: |
-          mkdir -p /tmp/kroxylicious-artifacts
-          cd "$HOME/.m2/repository"
-          tar czf /tmp/kroxylicious-artifacts/maven-repo.tar.gz io/kroxylicious
-      - name: 'Upload Kroxylicious Maven artifacts'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: kroxylicious-maven-artifacts
-          path: /tmp/kroxylicious-artifacts/maven-repo.tar.gz
-          retention-days: 1
+
+  #  build_artifacts:
+#    needs: discover_integration_test_chunks
+#    runs-on: ubuntu-latest
+#    outputs:
+#      kroxylicious_image: ${{ steps.build_image.outputs.KROXYLICIOUS_IMAGE }}
+#    steps:
+#      - name: Harden the runner (Audit all outbound calls)
+#        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+#        with:
+#          egress-policy: audit
+#
+#      - name: 'Check out repository'
+#        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+#        with:
+#          fetch-depth: 0
+#      - name: Setup Java
+#        uses: $/.github/actions/common/setup-java
+#      - name: 'Cache Maven packages'
+#        uses: $/.github/actions/common/cache-maven-packages
+#      - name: 'Build Kroxylicious modules with integration tests and operand image'
+#        id: build_image
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          GIT_HASH="$(git rev-parse HEAD)"
+#          KROXYLICIOUS_VERSION="$(mvn help:evaluate -Dexpression=project.version --quiet -DforceStdout)"
+#          KROXYLICIOUS_IMAGE="quay.io/kroxylicious/proxy:${KROXYLICIOUS_VERSION}-${GIT_HASH}"
+#
+#          echo "Building modules: ${{ needs.discover_integration_test_chunks.outputs.modules }}"
+#          echo "Building operand image: ${KROXYLICIOUS_IMAGE}"
+#
+#          mvn --batch-mode \
+#            --activate-profiles 'dist,!qa' \
+#            --projects ${{ needs.discover_integration_test_chunks.outputs.modules }} \
+#            --also-make \
+#            -DskipTests \
+#            -Dmaven.javadoc.skip=true \
+#            -DskipDocs=true \
+#            -Derrorprone.skip=true \
+#            -Dio.kroxylicious.proxy.image.name="${KROXYLICIOUS_IMAGE}" \
+#            install
+#
+#          echo "KROXYLICIOUS_IMAGE=${KROXYLICIOUS_IMAGE}" >> "$GITHUB_OUTPUT"
+#      - name: 'Upload Operand Image Artifact'
+#        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+#        with:
+#          name: kroxylicious-operand-image
+#          path: kroxylicious-app/target/kroxylicious-proxy.img.tar.gz
+#          retention-days: 1
+#      - name: 'Package Kroxylicious Maven artifacts'
+#        run: |
+#          mkdir -p /tmp/kroxylicious-artifacts
+#          cd "$HOME/.m2/repository"
+#          tar czf /tmp/kroxylicious-artifacts/maven-repo.tar.gz io/kroxylicious
+#      - name: 'Upload Kroxylicious Maven artifacts'
+#        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+#        with:
+#          name: kroxylicious-maven-artifacts
+#          path: /tmp/kroxylicious-artifacts/maven-repo.tar.gz
+#          retention-days: 1
   run_integration_tests:
-    needs: [build_artifacts, discover_integration_test_chunks]
+#    needs: [build_artifacts,get_kroxylicious_image,discover_integration_test_chunks]
+    needs: [get_kroxylicious_image,discover_integration_test_chunks]
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -207,16 +237,17 @@ jobs:
         uses: $/.github/actions/common/setup-minikube
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-      - name: Download Operand Image Artifact
+      - name: 'Download Operand Image Artifact'
         if: steps.check_k8s.outputs.needs_minikube == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
-          name: kroxylicious-operand-image
+          name:  kroxylicious-proxy
           path: /tmp/kroxylicious-operand
+          run_id: ${{github.run_id}}
       - name: Load Operand Image in Minikube
         if: steps.check_k8s.outputs.needs_minikube == 'true'
         env:
-          KROXYLICIOUS_IMAGE: ${{ needs.build_artifacts.outputs.kroxylicious_image }}
+          KROXYLICIOUS_IMAGE: ${{ needs.get_kroxylicious_image.outputs.kroxylicious_image }}
         run: |
           # Load image into Minikube
           minikube image load /tmp/kroxylicious-operand/kroxylicious-proxy.img.tar.gz
@@ -272,7 +303,7 @@ jobs:
             ${EXTRA_PROPS} \
             verify
   integration_test_filter_archetype:
-    needs: build_artifacts
+#    needs: build_artifacts
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
