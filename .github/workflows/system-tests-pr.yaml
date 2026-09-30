@@ -46,6 +46,7 @@ jobs:
         id: filter
         with:
           predicate-quantifier: 'some-with-excludes'
+          ref: ${{ github.event.workflow_run.head_branch }}
           filters: |
             systemtest:
               - '.github/workflows/system-tests-pr.yaml'
