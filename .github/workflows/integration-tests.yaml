@@ -199,10 +199,11 @@ jobs:
       - name: 'Cache Maven packages'
         uses: $/.github/actions/common/cache-maven-packages
       - name: 'Download Kroxylicious Maven artifacts'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
           name: kroxylicious-maven-artifacts
           path: /tmp/kroxylicious-artifacts
+          run_id: ${{ github.event.workflow_run.id }}
       - name: 'Extract Kroxylicious Maven artifacts'
         run: |
           mkdir -p "$HOME/.m2/repository"
@@ -243,7 +244,7 @@ jobs:
         with:
           name:  kroxylicious-proxy
           path: /tmp/kroxylicious-operand
-          run_id: ${{github.run_id}}
+          run_id: ${{ github.event.workflow_run.id }}
       - name: Load Operand Image in Minikube
         if: steps.check_k8s.outputs.needs_minikube == 'true'
         env:
@@ -320,10 +321,11 @@ jobs:
       - name: 'Cache Maven packages'
         uses: $/.github/actions/common/cache-maven-packages
       - name: 'Download Kroxylicious Maven artifacts'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7
         with:
           name: kroxylicious-maven-artifacts
           path: /tmp/kroxylicious-artifacts
+          run_id: ${{ github.event.workflow_run.id }}
       - name: 'Extract Kroxylicious Maven artifacts'
         run: |
           mkdir -p "$HOME/.m2/repository"
