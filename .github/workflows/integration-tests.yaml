@@ -17,10 +17,6 @@
 name: "Run Kroxylicious Proxy Integration Tests"
 
 on:
-#  push:
-#    branches: [ main, 'release/**' ]
-#  pull_request:
-#    types: [ opened, synchronize, reopened ]
   workflow_run:
     workflows: ["Build Kroxylicious Artifacts"]
     types: [completed]
@@ -74,11 +70,8 @@ jobs:
           echo "modules=$MODULES" >> $GITHUB_OUTPUT
           echo "Discovered modules: $MODULES"
           echo "Discovered $(echo "$TEST_CHUNKS" | jq -r 'length') test chunks"
-#  build_artifacts:
-#    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
 
   get_kroxylicious_image:
-#    needs: build_artifacts
     runs-on: ubuntu-latest
     outputs:
       kroxylicious_image: ${{ steps.get_kroxylicious_image.outputs.KROXYLICIOUS_IMAGE }}
@@ -160,7 +153,6 @@ jobs:
 #          path: /tmp/kroxylicious-artifacts/maven-repo.tar.gz
 #          retention-days: 1
   run_integration_tests:
-#    needs: [build_artifacts,get_kroxylicious_image,discover_integration_test_chunks]
     needs: [get_kroxylicious_image,discover_integration_test_chunks]
     if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
