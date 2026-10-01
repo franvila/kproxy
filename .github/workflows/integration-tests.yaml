@@ -349,15 +349,15 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
-#      - name: Report pending status
-#        env:
-#          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#        run: |
-#          gh api repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
-#            -f state=pending \
-#            -f context="integration_test_proxy" \
-#            -f description="Integration tests running..." \
-#            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Report pending status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
+            -f state=pending \
+            -f context="integration_test_proxy" \
+            -f description="Integration tests running..." \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: 'Check all matrix builds'
         id: result
