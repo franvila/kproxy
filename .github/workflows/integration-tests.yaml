@@ -45,6 +45,7 @@ jobs:
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - name: 'Discover ITs'
         id: discover
@@ -85,6 +86,7 @@ jobs:
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - name: 'Get operand image'
         id: build_image
@@ -193,6 +195,7 @@ jobs:
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - name: Setup Java
         uses: $/.github/actions/common/setup-java
@@ -315,6 +318,7 @@ jobs:
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - name: Setup Java
         uses: $/.github/actions/common/setup-java
@@ -345,20 +349,43 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
+#      - name: Report pending status
+#        env:
+#          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#        run: |
+#          gh api repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
+#            -f state=pending \
+#            -f context="integration_test_proxy" \
+#            -f description="Integration tests running..." \
+#            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: 'Check all matrix builds'
+        id: result
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           FAILED_JSON=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs \
             --jq '.jobs[] | select(.conclusion=="failure") | {name: .name, url: .html_url}')
           if [ -z "$FAILED_JSON" ]; then
             echo "All jobs passed!" >> $GITHUB_STEP_SUMMARY
             echo "No failures detected."
+            echo "result=success" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "Failed Matrix Jobs" >> $GITHUB_STEP_SUMMARY
           echo "The following instances failed:"
           echo "$FAILED_JSON" | jq -r '"* [\(.name)](\(.url))"' >> $GITHUB_STEP_SUMMARY
           echo "$FAILED_JSON" | jq -r '"\(.name): \(.url)"'
+          echo "result=failure" >> "$GITHUB_OUTPUT"
           exit 1
+      - name: Report final status
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          STATE=${{ steps.result.outputs.result }}
+          gh api repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
+            -f state="${STATE}" \
+            -f context="integration_test_proxy" \
+            -f description="Integration tests ${STATE}" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
