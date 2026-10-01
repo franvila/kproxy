@@ -20,11 +20,6 @@ on:
   workflow_run:
     workflows: [ "Build Kroxylicious Artifacts" ]
     types: [ completed ]
-#  pull_request:
-#    types: [ opened, synchronize, reopened, labeled ]
-#    branches:
-#      - "main"
-#      - 'release/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
@@ -40,7 +35,6 @@ jobs:
     outputs:
       systemtest: ${{ steps.filter.outputs.systemtest }}
     steps:
-      # For pull requests it's not necessary to check out the code
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -66,10 +60,6 @@ jobs:
               - '!kroxylicious-*benchmarks/**'
               - '!kroxylicious-test-images/**'
               - '!kroxylicious-wire-fidelity-tests/**'
-
-#  build_artifacts:
-##    needs: changes
-#    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
 
   set_variables:
 #    needs: changes
