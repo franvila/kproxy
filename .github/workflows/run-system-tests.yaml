@@ -208,7 +208,7 @@ jobs:
     needs: run_system_tests
     if: always()
     permissions:
-      actions: read
+      actions: write
     steps:
       - name: Report pending status
         env:

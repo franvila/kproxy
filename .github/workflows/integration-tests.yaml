@@ -343,7 +343,7 @@ jobs:
     needs: [run_integration_tests, integration_test_filter_archetype]
     if: always()
     permissions:
-      actions: read
+      actions: write
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
