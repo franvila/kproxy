@@ -80,6 +80,7 @@ jobs:
     with:
       groups: 'externalKafkaClients,operator'
       skipSystemTestRun: ${{ needs.changes.outputs.systemtest == 'false' }}
+      runId: ${{ github.event.workflow_run.id }}
 
   discover_system_test_clients:
     needs: changes
