@@ -210,9 +210,18 @@ jobs:
     permissions:
       actions: read
     steps:
+      - name: Report pending status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
+            -f state=pending \
+            -f context="integration_test_proxy" \
+            -f description="Integration tests running..." \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
       - name: 'Check all matrix builds'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           FAILED_JSON=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs \
             --jq '.jobs[] | select(.conclusion=="failure") | {name: .name, url: .html_url}')
@@ -231,7 +240,7 @@ jobs:
       - name: Report final status
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           STATE=${{ steps.result.outputs.result }}
           gh api repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }} \
