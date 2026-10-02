@@ -17,31 +17,34 @@
 name: System Tests for Pull-Requests
 
 on:
-  pull_request:
-    types: [ opened, synchronize, reopened, labeled ]
-    branches:
-      - "main"
-      - 'release/**'
-  workflow_dispatch:
+  workflow_run:
+    workflows: [ "Build Kroxylicious Artifacts" ]
+    types: [ completed ]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
   # JOB to run change detection
   changes:
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
     outputs:
       systemtest: ${{ steps.filter.outputs.systemtest }}
     steps:
-      # For pull requests it's not necessary to check out the code
+      - name: 'Check out repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
         id: filter
         with:
           predicate-quantifier: 'some-with-excludes'
+          ref: ${{ github.event.workflow_run.head_branch }}
           filters: |
             systemtest:
               - '.github/workflows/system-tests-pr.yaml'
@@ -58,12 +61,8 @@ jobs:
               - '!kroxylicious-test-images/**'
               - '!kroxylicious-wire-fidelity-tests/**'
 
-  build_artifacts:
-    needs: changes
-    uses: $/.github/workflows/build-kroxylicious-artifacts.yaml
-
   set_variables:
-    needs: changes
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
     runs-on: ubuntu-latest
     outputs:
       kafka_client: ${{ steps.kafkaClient.outputs.kafka_client }}
@@ -100,7 +99,8 @@ jobs:
           echo "$KAFKA_CLIENT"
 
   run_system_tests:
-    needs: [changes,build_artifacts,set_variables]
+    if: ${{ github.event.workflow_run && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' }}
+    needs: [changes,set_variables]
     uses: $/.github/workflows/run-system-tests.yaml
     secrets:
       KROXYLICIOUS_KMS_FORTANIX_ADMIN_API_KEY: ${{ secrets.KROXYLICIOUS_KMS_FORTANIX_ADMIN_API_KEY }}
@@ -109,3 +109,4 @@ jobs:
       kafkaClient: ${{ needs.set_variables.outputs.kafka_client }}
       testFortanixKMS: ${{ contains(github.event.pull_request.labels.*.name, 'kms/fortanix') }}
       skipSystemTestRun: ${{ needs.changes.outputs.systemtest == 'false' }}
+      runId: ${{ github.event.workflow_run.id }}
