@@ -52,6 +52,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: 'Check team membership'
         if: ${{ github.repository == 'kroxylicious/kroxylicious' }}

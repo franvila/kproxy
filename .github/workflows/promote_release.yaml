@@ -69,6 +69,7 @@ jobs:
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
           fetch-tags: true
           fetch-depth: 0
+          persist-credentials: false
 
       - name: 'Require promote-release to be run on base repository'
         if: ${{ inputs.command == 'promote-release' && github.repository != 'kroxylicious/kroxylicious' }}

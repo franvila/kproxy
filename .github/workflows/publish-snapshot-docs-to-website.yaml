@@ -62,6 +62,7 @@ jobs:
         with:
           path: kroxylicious
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}
+          persist-credentials: false
 
       - name: Setup Java
         uses: ./.github/actions/common/setup-java
