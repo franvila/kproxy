@@ -64,17 +64,17 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1
       - name: Setup Java
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
         with:
           javaVersion: ${{ matrix.java.version }}
           javaDistro: ${{ matrix.java.distro }}
       - name: Setup Minikube
-        uses: ./.github/actions/common/setup-minikube
+        uses: $/.github/actions/common/setup-minikube
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
       - name: 'Cache Maven packages'
         id: cache-maven
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
         with:
           read-only: 'false'
       - name: 'Warm Maven dependency cache'
@@ -145,7 +145,7 @@ jobs:
             -Djapicmp.skip=${{ needs.compute_pom_version.outputs.reference_release_unpublished }}
       - name: Slack Notification on Failure
         if: failure() && steps.check_slack.outputs.slack_webhook_set == 'true' && github.event_name == 'push'
-        uses: ./.github/actions/common/slack-notification
+        uses: $/.github/actions/common/slack-notification
         with:
           slackWebhook: ${{ secrets.KROXYLICIOUS_SLACK_WEBHOOK }}
           slackTitle: 'Failure Alert: ${{ github.repository }}'
@@ -169,9 +169,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Java
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
       - name: 'Determine project version'
         id: version
         run: echo "version=$(mvn --quiet help:evaluate -Dexpression=project.version -DforceStdout)" >> "$GITHUB_OUTPUT"
@@ -188,7 +188,7 @@ jobs:
 
   build_container_images:
     needs: compute_pom_version
-    uses: ./.github/workflows/build-kroxylicious-container-images.yaml
+    uses: $/.github/workflows/build-kroxylicious-container-images.yaml
     with:
       push-images: ${{ github.event_name == 'push' }}
       multi-arch: ${{ github.event_name == 'push' }}
@@ -213,7 +213,7 @@ jobs:
           echo "slack_webhook_set=$(test ${KROXYLICIOUS_SLACK_WEBHOOK} && echo true)" >> "$GITHUB_OUTPUT"
       - name: Slack Notification on Failure
         if: steps.check_slack.outputs.slack_webhook_set == 'true'
-        uses: ./.github/actions/common/slack-notification
+        uses: $/.github/actions/common/slack-notification
         with:
           slackWebhook: ${{ secrets.KROXYLICIOUS_SLACK_WEBHOOK }}
           slackTitle: 'Failure Alert: ${{ github.repository }}'

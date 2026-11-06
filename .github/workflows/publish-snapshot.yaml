@@ -61,10 +61,10 @@ jobs:
           persist-credentials: false
 
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
 
       - name: 'Set up Java'
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
         with:
           javaVersion: '21'
           javaDistro: 'temurin'
