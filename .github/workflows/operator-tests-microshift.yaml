@@ -133,6 +133,7 @@ jobs:
           kubectl version
 
       - name: 'Build Kroxylicious Operand Container Images'
+        id: operand_image
         run: |
           eval "$(crc podman-env --root)"
 
@@ -152,9 +153,11 @@ jobs:
               install
 
           # This ensures that the tests will use the built operand.
-          echo "KROXYLICIOUS_IMAGE=${KROXYLICIOUS_IMAGE}" >> "${GITHUB_ENV}"
+          echo "kroxylicious_image=${KROXYLICIOUS_IMAGE}" >> "${GITHUB_OUTPUT}"
 
       - name: Run operator integration tests
+        env:
+          KROXYLICIOUS_IMAGE: ${{ steps.operand_image.outputs.kroxylicious_image }}
         run: |
           eval "$(crc podman-env --root)"
 
