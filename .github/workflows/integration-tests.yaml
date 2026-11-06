@@ -35,6 +35,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: 'Discover ITs'
         id: discover
         run: |
@@ -77,6 +78,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: 'Get operand image'
         id: build_image
         env:
@@ -121,10 +123,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup Java
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
       - name: 'Download Kroxylicious Maven artifacts'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
@@ -161,7 +164,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - name: Setup Minikube
         if: steps.check_k8s.outputs.needs_minikube == 'true'
-        uses: ./.github/actions/common/setup-minikube
+        uses: $/.github/actions/common/setup-minikube
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
       - name: Download Operand Image Artifact
@@ -242,10 +245,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Setup Java
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
       - name: 'Download Kroxylicious Maven artifacts'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:

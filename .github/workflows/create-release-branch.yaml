@@ -52,6 +52,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN || github.token }}
+          persist-credentials: false
 
       - name: 'Check team membership'
         if: ${{ github.repository == 'kroxylicious/kroxylicious' }}
@@ -105,10 +106,10 @@ jobs:
           git config --global user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
 
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
 
       - name: 'Set up Java'
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
         with:
           javaVersion: '21'
           javaDistro: 'temurin'

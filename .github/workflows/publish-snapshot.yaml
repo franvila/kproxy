@@ -57,12 +57,14 @@ jobs:
 
       - name: 'Check out repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: 'Cache Maven packages'
-        uses: ./.github/actions/common/cache-maven-packages
+        uses: $/.github/actions/common/cache-maven-packages
 
       - name: 'Set up Java'
-        uses: ./.github/actions/common/setup-java
+        uses: $/.github/actions/common/setup-java
         with:
           javaVersion: '21'
           javaDistro: 'temurin'

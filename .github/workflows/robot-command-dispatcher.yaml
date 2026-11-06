@@ -35,6 +35,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
+          persist-credentials: false
 
       - name: 'Check team membership'
         if: ${{ github.repository == 'kroxylicious/kroxylicious' }}
@@ -75,7 +76,7 @@ jobs:
   dispatch-release-or-drop:
     needs: process-command
     if: ${{ needs.process-command.outputs.command == 'drop-release' || needs.process-command.outputs.command == 'promote-release' }}
-    uses: ./.github/workflows/promote_release.yaml
+    uses: $/.github/workflows/promote_release.yaml
     with:
       command: ${{ needs.process-command.outputs.command }}
       release-pr-issue-number: ${{ github.event.issue.number }}
@@ -95,6 +96,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           token: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
+          persist-credentials: false
 
       - name: 'Send help'
         env:
