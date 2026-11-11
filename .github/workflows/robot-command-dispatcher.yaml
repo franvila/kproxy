@@ -17,6 +17,8 @@
 name: Kroxylicious Robot Command Dispatcher
 
 on:
+  # zizmor: ignore[dangerous-triggers] — issue_comment is required for PR bot commands needing release secrets.
+  # Mitigations: permissions: {}, harden-runner, team membership check before any privileged action.
   issue_comment:
     types: [created]
 

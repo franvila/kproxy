@@ -1,6 +1,8 @@
 name: Sonar Scan
 
 on:
+  # zizmor: ignore[dangerous-triggers] — workflow_run is required for SonarCloud to access SONAR_TOKEN on fork PRs.
+  # Mitigations: permissions: {}, harden-runner, conclusion == 'success' gate.
   workflow_run:
     workflows: [ "Lint Pull Request" ]
     types: [completed]
