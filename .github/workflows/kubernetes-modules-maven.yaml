@@ -61,6 +61,7 @@ jobs:
       - name: Setup Java
         uses: $/.github/actions/common/setup-java
       - name: 'Cache Maven packages'
+        # zizmor: ignore[cache-poisoning] — read-only by default; PRs never write to cache.
         uses: $/.github/actions/common/cache-maven-packages
       - name: Cache SonarCloud packages
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
