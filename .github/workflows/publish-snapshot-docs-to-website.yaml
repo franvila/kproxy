@@ -101,8 +101,10 @@ jobs:
       - name: Load Jekyll configuration overrides
         run: |
           echo "baseurl: kroxylicious" > _config-baseurl.yml
-          echo "${{ vars.JEKYLL_CONFIG_OVERRIDES }}" > _config-overrides.yml
+          echo "$JEKYLL_CONFIG_OVERRIDES" > _config-overrides.yml
         working-directory: kroxylicious.github.io
+        env:
+          JEKYLL_CONFIG_OVERRIDES: ${{ vars.JEKYLL_CONFIG_OVERRIDES }}
 
       - name: copy built documentation into website
         run: cp -r kroxylicious/kroxylicious-docs/target/web/* kroxylicious.github.io/

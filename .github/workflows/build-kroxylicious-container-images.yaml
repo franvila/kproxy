@@ -115,8 +115,16 @@ jobs:
         id: build_configuration
         env:
           ADDITIONAL_TAGS: ${{ inputs.additional-tags }}
+          INPUT_OUTPUT_TARBALLS: ${{ inputs.output-tarballs }}
+          INPUT_PUSH_IMAGES: ${{ inputs.push-images }}
+          INPUT_MULTI_ARCH: ${{ inputs.multi-arch }}
+          VAR_REGISTRY_SERVER: ${{ vars.REGISTRY_SERVER }}
+          VAR_REGISTRY_ORGANISATION: ${{ vars.REGISTRY_ORGANISATION }}
+          VAR_PROXY_IMAGE_NAME: ${{ vars.PROXY_IMAGE_NAME }}
+          VAR_OPERATOR_IMAGE_NAME: ${{ vars.OPERATOR_IMAGE_NAME }}
+          VAR_ADMISSION_IMAGE_NAME: ${{ vars.ADMISSION_IMAGE_NAME }}
         run: |
-          if [[ "${{ inputs.output-tarballs }}" == "true" && "${{ inputs.push-images }}" == "true" ]]; then
+          if [[ "${INPUT_OUTPUT_TARBALLS}" == "true" && "${INPUT_PUSH_IMAGES}" == "true" ]]; then
             echo "::error::output-tarballs and push-images are mutually exclusive; set at most one to true." >&2
             exit 1
           fi
@@ -125,11 +133,11 @@ jobs:
           {
             echo "release_version=${POMS_VERSION}"
             echo "image_created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "output_tarballs=${{ inputs.output-tarballs }}"
+            echo "output_tarballs=${INPUT_OUTPUT_TARBALLS}"
           } >> "$GITHUB_OUTPUT"
           SHA_TAG="commit-${GITHUB_SHA}"
 
-          if [[ "${{ inputs.output-tarballs }}" == "true" ]]; then
+          if [[ "${INPUT_OUTPUT_TARBALLS}" == "true" ]]; then
             # Tarball mode: amd64-only, no push, use Maven image names for compatibility
             # with system-test tooling that verifies image names via Maven properties.
             {
@@ -143,7 +151,7 @@ jobs:
               echo "admission_platforms=linux/amd64"
               echo "admission_tags=quay.io/kroxylicious/webhook:${POMS_VERSION}"
             } >> "$GITHUB_OUTPUT"
-          elif [[ "${{ inputs.push-images }}" != "true" || "${{ vars.REGISTRY_SERVER }}" == "" ]]; then
+          elif [[ "${INPUT_PUSH_IMAGES}" != "true" || "${VAR_REGISTRY_SERVER}" == "" ]]; then
             # No-push mode: amd64-only validation build (CI PRs or forks without registry vars).
             {
               echo "push_images=false"
@@ -157,15 +165,15 @@ jobs:
               echo "admission_tags=kroxylicious-admission:${SHA_TAG}"
             } >> "$GITHUB_OUTPUT"
           else
-            PROXY_IMAGE="${{ vars.REGISTRY_SERVER }}/${{ vars.REGISTRY_ORGANISATION }}/${{ vars.PROXY_IMAGE_NAME }}"
-            OPERATOR_IMAGE="${{ vars.REGISTRY_SERVER }}/${{ vars.REGISTRY_ORGANISATION }}/${{ vars.OPERATOR_IMAGE_NAME }}"
-            ADMISSION_IMAGE="${{ vars.REGISTRY_SERVER }}/${{ vars.REGISTRY_ORGANISATION }}/${{ vars.ADMISSION_IMAGE_NAME }}"
+            PROXY_IMAGE="${VAR_REGISTRY_SERVER}/${VAR_REGISTRY_ORGANISATION}/${VAR_PROXY_IMAGE_NAME}"
+            OPERATOR_IMAGE="${VAR_REGISTRY_SERVER}/${VAR_REGISTRY_ORGANISATION}/${VAR_OPERATOR_IMAGE_NAME}"
+            ADMISSION_IMAGE="${VAR_REGISTRY_SERVER}/${VAR_REGISTRY_ORGANISATION}/${VAR_ADMISSION_IMAGE_NAME}"
 
             # Per-arch intermediate tags are pushed individually then merged into the
             # final manifest list.
             {
               echo "push_images=true"
-              echo "multi_arch=${{ inputs.multi-arch }}"
+              echo "multi_arch=${INPUT_MULTI_ARCH}"
               echo "proxy_amd64_tag=${PROXY_IMAGE}:${SHA_TAG}-amd64"
               echo "proxy_arm64_tag=${PROXY_IMAGE}:${SHA_TAG}-arm64"
             } >> "$GITHUB_OUTPUT"
@@ -401,8 +409,9 @@ jobs:
 
       - name: Verify arm64 proxy image native libraries
         if: steps.build_configuration.outputs.multi_arch == 'true'
+        env:
+          ARM64_TAG: ${{ steps.build_configuration.outputs.proxy_arm64_tag }}
         run: |
-          ARM64_TAG="${{ steps.build_configuration.outputs.proxy_arm64_tag }}"
           echo "Verifying arm64 native libs in ${ARM64_TAG}..."
           _CONTAINER_ID=$(docker create --platform linux/arm64 "${ARM64_TAG}")
           _NATIVE_DIR=$(mktemp -d)
@@ -420,16 +429,23 @@ jobs:
 
       - name: Create and push proxy multi-arch manifest
         if: steps.build_configuration.outputs.multi_arch == 'true'
+        env:
+          PROXY_FINAL_TAGS: ${{ steps.build_configuration.outputs.proxy_final_tags }}
+          IMAGE_CREATED: ${{ steps.build_configuration.outputs.image_created }}
+          GIT_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ steps.build_configuration.outputs.release_version }}
+          PROXY_AMD64_TAG: ${{ steps.build_configuration.outputs.proxy_amd64_tag }}
+          PROXY_ARM64_TAG: ${{ steps.build_configuration.outputs.proxy_arm64_tag }}
         run: |
-          for TAG in $(echo "${{ steps.build_configuration.outputs.proxy_final_tags }}" | tr ',' ' '); do
+          for TAG in $(echo "${PROXY_FINAL_TAGS}" | tr ',' ' '); do
             docker buildx imagetools create \
-              --annotation "index:org.opencontainers.image.created=${{ steps.build_configuration.outputs.image_created }}" \
-              --annotation "index:org.opencontainers.image.revision=${{ github.sha }}" \
+              --annotation "index:org.opencontainers.image.created=${IMAGE_CREATED}" \
+              --annotation "index:org.opencontainers.image.revision=${GIT_SHA}" \
               --annotation "index:org.opencontainers.image.source=https://github.com/kroxylicious/kroxylicious" \
-              --annotation "index:org.opencontainers.image.version=${{ steps.build_configuration.outputs.release_version }}" \
+              --annotation "index:org.opencontainers.image.version=${RELEASE_VERSION}" \
               -t "${TAG}" \
-              "${{ steps.build_configuration.outputs.proxy_amd64_tag }}" \
-              "${{ steps.build_configuration.outputs.proxy_arm64_tag }}"
+              "${PROXY_AMD64_TAG}" \
+              "${PROXY_ARM64_TAG}"
           done
 
       - name: Archive proxy image tarball

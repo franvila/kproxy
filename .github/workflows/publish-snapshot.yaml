@@ -103,17 +103,17 @@ jobs:
       - name: 'Summary'
         if: steps.version.outputs.is_snapshot == 'true'
         run: |
-          cat >> "$GITHUB_STEP_SUMMARY" << 'SUMMARY'
+          cat >> "$GITHUB_STEP_SUMMARY" << SUMMARY
           ## SNAPSHOT Published
 
-          **Version:** `${{ steps.version.outputs.PROJECT_VERSION }}`
-          **Commit:** `${{ github.sha }}`
+          **Version:** \`${PROJECT_VERSION}\`
+          **Commit:** \`${COMMIT_SHA}\`
 
           ### Consumer configuration
 
-          Add the Central Portal snapshot repository to your `pom.xml` or `settings.xml`:
+          Add the Central Portal snapshot repository to your \`pom.xml\` or \`settings.xml\`:
 
-          ```xml
+          \`\`\`xml
           <repositories>
             <repository>
               <id>central-snapshots</id>
@@ -123,8 +123,11 @@ jobs:
               </snapshots>
             </repository>
           </repositories>
-          ```
+          \`\`\`
           SUMMARY
+        env:
+          PROJECT_VERSION: ${{ steps.version.outputs.PROJECT_VERSION }}
+          COMMIT_SHA: ${{ github.sha }}
 
       - name: 'Summary (skipped)'
         if: steps.version.outputs.is_snapshot != 'true'
@@ -132,5 +135,7 @@ jobs:
           {
             echo "## SNAPSHOT Publish Skipped"
             echo ""
-            echo "Version \`${{ steps.version.outputs.PROJECT_VERSION }}\` does not end with \`-SNAPSHOT\`, nothing to publish."
+            echo "Version \`${PROJECT_VERSION}\` does not end with \`-SNAPSHOT\`, nothing to publish."
           } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          PROJECT_VERSION: ${{ steps.version.outputs.PROJECT_VERSION }}
