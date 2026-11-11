@@ -138,6 +138,7 @@ jobs:
             -Djapicmp.skip="${REFERENCE_RELEASE_UNPUBLISHED}" \
             install
       - name: Cache SonarCloud packages
+        # zizmor: ignore[cache-poisoning] — gated to push-to-main only; PRs never reach this step.
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref_name == 'main' && steps.check_sonar.outputs.token_set == 'true'
         with:
