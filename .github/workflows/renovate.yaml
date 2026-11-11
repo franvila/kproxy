@@ -26,9 +26,14 @@ on:
     # Run weekly on Saturday at 3am UTC to match Dependabot schedule
     - cron: '0 3 * * 6'
   workflow_dispatch:
+
+permissions: {}
+
 jobs:
   renovate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 5
     steps:
       - name: Harden the runner (Audit all outbound calls)

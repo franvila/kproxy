@@ -91,12 +91,16 @@ on:
         type: boolean
         default: false
 
+permissions: {}
+
 env:
   ARCH_MATRIX_FILE: .github/workflows/config/arch-matrix.json
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       matrix: ${{ steps.arches.outputs.matrix }}
       arches: ${{ steps.arches.outputs.arches }}
@@ -299,6 +303,8 @@ jobs:
 
   build-arch:
     needs: prepare
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -469,6 +475,7 @@ jobs:
 
   publish-proxy-manifest:
     needs: [ prepare, build-arch ]
+    permissions: {}
     if: needs.prepare.outputs.push_images == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -583,6 +590,8 @@ jobs:
 
   build-operator-images:
     needs: prepare
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)

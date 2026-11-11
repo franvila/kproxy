@@ -23,6 +23,8 @@ on:
     types: [ opened, synchronize, reopened ]
   merge_group:
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -30,6 +32,8 @@ concurrency:
 jobs:
   build_kubernetes_modules:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Harden the runner (Audit all outbound calls)

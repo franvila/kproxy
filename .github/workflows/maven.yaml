@@ -23,12 +23,16 @@ on:
     types: [ opened, synchronize, reopened ]
   merge_group:
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   unittest_all:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     needs: compute_pom_version
     strategy:
@@ -161,6 +165,8 @@ jobs:
           runId: ${{ github.run_id }}
 
   compute_pom_version:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -267,6 +273,8 @@ jobs:
           echo "arches=${ARCHES}" >> "$GITHUB_OUTPUT"
 
   build_container_images:
+    permissions:
+      contents: read
     needs: [ compute_pom_version, select_architectures ]
     uses: ./.github/workflows/build-kroxylicious-container-images.yaml
     with:
@@ -277,6 +285,7 @@ jobs:
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
 
   container_images_slack_notification:
+    permissions: {}
     runs-on: ubuntu-latest
     needs: build_container_images
     if: failure() && github.event_name == 'push'

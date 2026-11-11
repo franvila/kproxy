@@ -36,9 +36,13 @@ on:
         description: 'Next development version (e.g. 0.25.1-SNAPSHOT). Patch version incremented automatically if omitted.'
         required: false
 
+permissions: {}
+
 jobs:
   create-release-branch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
