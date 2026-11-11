@@ -40,6 +40,8 @@ on:
       - main
       - 'release/*'
 
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -47,6 +49,8 @@ concurrency:
 jobs:
   publish-snapshot:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: github.repository == 'kroxylicious/kroxylicious'
 
     steps:

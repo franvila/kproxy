@@ -43,12 +43,17 @@ on:
         default: ''
         required: false
 
+permissions: {}
+
+permissions: {}
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 jobs:
   preflight:
+    permissions: {}
     name: Preflight checks
     runs-on: ubuntu-latest
     outputs:
@@ -66,6 +71,8 @@ jobs:
         run: echo "pullsecret=$(test ${REDHAT_PULL_SECRET} && echo true)" >> "$GITHUB_OUTPUT"
 
   operator-tests-microshift:
+    permissions:
+      contents: read
     name: Operator integration & system tests on MicroShift
     # Pinned to ubuntu-24.04: crc-org/crc-github-action@v1.0.1 fails on ubuntu-26.04
     # due to missing qemu-kvm package (replaced by qemu-system-x86 in newer Ubuntu)

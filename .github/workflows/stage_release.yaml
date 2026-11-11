@@ -50,8 +50,15 @@ on:
         description: 'The URI of the website repository, starting with everything after the @, e.g. github.com/kroxylicious/kroxylicious.github.io.git'
         required: false
         default: 'github.com/kroxylicious/kroxylicious.github.io.git'
+permissions: {}
+
 jobs:
   stage-release:
+    permissions:
+      contents: write
+      pull-requests: write
+      statuses: write
+      actions: read
     runs-on: ubuntu-latest
 
     steps:
@@ -78,6 +85,8 @@ jobs:
 
       - name: 'Stop workflow if user is not a release-engineer'
         if: ${{ github.repository == 'kroxylicious/kroxylicious' && steps.team-membership.outputs.isTeamMember == 'false' }}
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
         run: |
           echo "${GITHUB_ACTOR} is not a member of https://github.com/orgs/kroxylicious/teams/release-engineers)" >&2
           exit 1
@@ -139,7 +148,7 @@ jobs:
           SONATYPE_TOKEN_USERNAME: ${{ vars.KROXYLICIOUS_SONATYPE_TOKEN_USERNAME }}
           SONATYPE_TOKEN_PASSWORD: ${{ secrets.KROXYLICIOUS_SONATYPE_TOKEN_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.KROXYLICIOUS_RELEASE_PRIVATE_KEY_PASSPHRASE }}
-          GH_TOKEN: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }} # For the gh cmd line tool used by stage-release.sh
           RELEASE_VERSION: ${{ github.event.inputs.release-version }}
           DEVELOPMENT_VERSION: ${{ github.event.inputs.development-version }}
           RELEASE_BRANCH: ${{ github.event.inputs.branch }}
@@ -364,7 +373,7 @@ jobs:
 
       - name: 'Comment on PR to prompt next phase of the release'
         env:
-          GH_TOKEN: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ secrets.KROXYLICIOUS_RELEASE_TOKEN }} # For the gh cmd line tool used by stage-release.sh
           RELEASE_BRANCH: ${{ inputs.branch }}
           RELEASE_VERSION: ${{ github.event.inputs.release-version }}
           DEVELOPMENT_VERSION: ${{ github.event.inputs.development-version }}

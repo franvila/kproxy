@@ -51,8 +51,12 @@ on:
       KROXYLICIOUS_KMS_FORTANIX_API_KEY:
         required: false
 
+permissions: {}
+
 jobs:
   discover_system_test_chunks:
+    permissions:
+      contents: read
     if: ${{ inputs.skipSystemTestRun == false }}
     runs-on: ubuntu-latest
     outputs:
@@ -75,6 +79,9 @@ jobs:
           echo "test_chunks=$TEST_CHUNKS" >> "$GITHUB_OUTPUT"
 
   run_system_tests:
+    permissions:
+      contents: read
+      checks: write
     needs: [discover_system_test_chunks]
     if: ${{ inputs.skipSystemTestRun == false }}
     runs-on: ubuntu-latest

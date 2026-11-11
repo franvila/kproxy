@@ -20,9 +20,13 @@ on:
   issue_comment:
     types: [created]
 
+permissions: {}
+
 jobs:
 
   process-command:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '@kroxylicious-robot')  && !contains(github.event.comment.body, '@kroxylicious-robot run')}}
     steps:
@@ -76,6 +80,8 @@ jobs:
       unrecognized: ${{ env.UNRECOGNIZED }}
 
   dispatch-release-or-drop:
+    permissions:
+      contents: read
     needs: process-command
     if: ${{ needs.process-command.outputs.command == 'drop-release' || needs.process-command.outputs.command == 'promote-release' }}
     uses: $/.github/workflows/promote_release.yaml
@@ -85,6 +91,8 @@ jobs:
     secrets: inherit
 
   dispatch-help:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     needs: process-command
     if: ${{ needs.process-command.outputs.unrecognized == 'true' }}

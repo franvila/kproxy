@@ -19,6 +19,8 @@ name: Build Kroxylicious Artifacts
 on:
   workflow_call:
 
+permissions: {}
+
 jobs:
   build_kroxylicious_images:
     uses: $/.github/workflows/build-kroxylicious-container-images.yaml
@@ -26,6 +28,8 @@ jobs:
       output-tarballs: true
 
   build_artifacts:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - name: Harden the runner (Audit all outbound calls)
