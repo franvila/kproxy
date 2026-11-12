@@ -23,6 +23,8 @@ permissions: {}
 
 jobs:
   build_kroxylicious_images:
+    permissions:
+      contents: read
     uses: $/.github/workflows/build-kroxylicious-container-images.yaml
     with:
       output-tarballs: true
