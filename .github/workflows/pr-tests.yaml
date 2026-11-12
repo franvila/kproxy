@@ -40,6 +40,7 @@ jobs:
   integration_test_pr:
     permissions:
       contents: read
+      actions: read
     if: github.event_name != 'merge_group'
     needs: build_artifacts
     uses: $/.github/workflows/integration-tests.yaml
