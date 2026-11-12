@@ -57,6 +57,7 @@ jobs:
       contents: read
       pull-requests: read
       actions: read
+      checks: write
     if: github.event_name != 'merge_group'
     needs: build_artifacts
     uses: $/.github/workflows/system-tests-pr.yaml
